@@ -106,6 +106,18 @@ if (!/data-secret/.test(adminHtml)) {
   problems.push('admin.html does not render data-secret on private-key inputs');
 }
 
+/* 5c. Regression: wireProductCard must receive DOM nodes, not product data.
+ * Calling it with D.products threw "card.querySelector is not a function". */
+if (/\b(all|D\.products)\.forEach\(\s*wireProductCard\s*\)/.test(adminHtml)) {
+  problems.push('admin.html wires product cards from data objects — select [data-pid] elements instead');
+}
+if (!/#pane-products \[data-pid\]/.test(adminHtml)) {
+  problems.push('admin.html does not select rendered product cards before wiring them');
+}
+if (!/failed to render/.test(adminHtml)) {
+  problems.push('admin.html render errors are not separated from auth errors');
+}
+
 /* 6. The storefront must go through getData(), never fetch(API) directly. */
 for (const f of ['index.html', 'product.html', 'account.html']) {
   const html = readFileSync(join(root, 'public', f), 'utf8');

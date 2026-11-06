@@ -14,7 +14,7 @@
 .rs{font-size:30px;color:#d1d5db}.rs.on{color:#f59e0b}
 </style>
 </head>
-<body class="text-gray-900">
+<body>
 <div id="banner" style="display:none" class="text-white text-center text-sm font-bold py-2 px-4"></div>
 <nav class="border-b p-5 bg-white sticky top-0 z-40 flex justify-between items-center">
   <a href="index.html" class="text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-black">&larr; Back</a>
@@ -32,15 +32,16 @@
     <div>
       <h1 id="title" class="text-2xl md:text-3xl leading-snug mb-2"></h1>
       <div id="rating" class="mb-3 text-sm"></div>
-      <p id="price" class="text-3xl font-black mb-1"></p>
+      <p id="price" class="text-3xl font-black mb-1 price"></p>
       <p id="meta" class="text-sm text-gray-500"></p>
+      <div id="opts" class="mt-4"></div>
       <div id="stock"></div>
       <div class="mt-6">
         <div id="qtyRow" class="flex items-center gap-3 mb-4"><span class="text-sm font-bold">Qty</span>
           <button id="minus" class="w-10 h-10 rounded-full border text-xl">−</button>
           <input id="qty" value="1" readonly class="w-14 text-center border rounded-lg py-2 font-bold">
           <button id="plus" class="w-10 h-10 rounded-full border text-xl">+</button></div>
-        <button id="buy" class="btn-p w-full py-4 rounded-full font-bold text-lg shadow-lg"></button>
+        <button id="buy" class="btn-p w-full py-4 font-bold text-lg shadow-lg"></button>
         <p id="err" class="text-red-600 text-sm mt-2"></p>
       </div>
       <div class="border-t pt-6 mt-8"><h3 class="text-sm uppercase tracking-widest text-gray-400 mb-3">Description</h3>
@@ -56,7 +57,7 @@
 <script src="site.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let P, S, imgs = [], mainTrack;
+let P, S, V, imgs = [], track, sel = {};
 
 function video(url) {
   const y = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);
@@ -64,18 +65,52 @@ function video(url) {
   if (/^https:\/\//.test(url)) return `<video src="${esc(url)}" controls playsinline preload="metadata" class="w-full rounded-xl bg-black"></video>`;
   return '';
 }
-
 function openLb(i) { $('lb').classList.add('open'); const t = $('lbt'); t.scrollTo({ left: i * t.clientWidth }); }
+
+// ---- variants ----
+const curItem = () => { if (!V || V.options.some(o => !sel[o.name])) return null; const k = V.options.map(o => sel[o.name]).join('|'); return V.items.find(i => i.key === k) || null; };
+function renderOpts() {
+  if (!V) { $('opts').innerHTML = ''; return; }
+  $('opts').innerHTML = V.options.map((o, oi) => `<div class="mb-4"><div class="text-sm font-bold mb-1">${esc(o.name)}${sel[o.name] ? ': <span class="font-normal">' + esc(sel[o.name]) + '</span>' : ''}</div><div class="flex flex-wrap gap-2">` +
+    o.values.map(v => { const out = V.items.filter(i => i.key.split('|')[oi] === v).every(i => i.qty <= 0), chosen = sel[o.name] === v;
+      return `<button type="button" data-o="${esc(o.name)}" data-v="${esc(v)}" class="opt px-3 py-1.5 rounded-lg border text-sm bg-white ${out ? 'opacity-40 line-through' : ''}" style="${chosen ? 'border-color:var(--p);box-shadow:0 0 0 1px var(--p);font-weight:700' : ''}">${esc(v)}</button>`; }).join('') + `</div></div>`).join('');
+  $('opts').querySelectorAll('.opt').forEach(b => b.onclick = () => { sel[b.dataset.o] = b.dataset.v; renderOpts(); refresh(true); });
+}
+function refresh(scrollImg) {
+  const it = curItem(), src = it || P, pre = P.status === 'upcoming' && P.preorder;
+  const price = it ? (it.price || P.basePrice) : P.price;
+  $('price').textContent = (!it && P.priceFrom ? 'From ' : '') + money(price) + ' CAD';
+  $('stock').innerHTML = (P.status === 'live' && on(S.stock_bar_on)) ? stockBar({ qty: src.qty, sold: src.sold }, S) : '';
+  if (scrollImg && it && it.image) { const i = imgs.indexOf(it.image); if (i >= 0) track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }); }
+  const needSel = V && !it, can = (P.status === 'live' || pre) && src.qty > 0 && !needSel;
+  if (!can) { $('qtyRow').classList.add('hidden'); $('buy').disabled = true;
+    $('buy').textContent = P.status === 'archived' ? 'Deal ended' : (P.status === 'upcoming' && !pre) ? 'Coming soon' : needSel ? 'Select options' : 'Sold out'; return; }
+  $('qtyRow').classList.remove('hidden'); $('buy').disabled = false;
+  $('qty').value = Math.max(1, Math.min(src.qty, Number($('qty').value) || 1));
+  $('buy').textContent = (pre ? S.preorder_label : S.buy_label) + ' - ' + money(price * Number($('qty').value));
+}
+
 function reviewsHtml(revs) {
   const u = authUser();
   return `<h2 class="text-2xl mb-4">Customer reviews</h2>` + (revs.length ? revs.map(r => `<div class="border-b py-4"><div>${stars(r.stars)} <b class="ml-1">${esc(r.name)}</b>${r.verified ? ' <span class="text-xs text-green-700 font-semibold ml-1">Verified purchase</span>' : ''}</div>
     <p class="text-sm text-gray-700 mt-1">${esc(r.text)}</p>${r.reply ? `<p class="text-sm bg-gray-50 border-l-4 pl-3 py-2 mt-2"><b>Seller reply:</b> ${esc(r.reply)}</p>` : ''}</div>`).join('') : '<p class="text-gray-400 text-sm mb-4">No reviews yet. Be the first!</p>') + `
   <div class="bg-white rounded-xl p-5 mt-6 border"><h3 class="mb-2 text-lg">Write a review</h3>
-    <div id="rstars" class="mb-2">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="rs" data-n="${n}">★</button>`).join('')}</div>
+    <div class="mb-2">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="rs" data-n="${n}">★</button>`).join('')}</div>
     <div class="grid sm:grid-cols-2 gap-2 mb-2"><input id="rn" class="border rounded p-2 text-sm" placeholder="Your name" value="${esc(u ? u.name || '' : '')}"><input id="re" type="email" class="border rounded p-2 text-sm" placeholder="Your email (not shown)" value="${esc(u ? u.email : '')}"></div>
     <textarea id="rt" rows="3" maxlength="1000" class="w-full border rounded p-2 text-sm" placeholder="What did you think?"></textarea>
-    <button id="rsend" class="btn-p mt-2 px-6 py-2 rounded-full font-bold text-sm">Submit review</button><p id="rmsg" class="text-sm mt-2"></p>
-    <p class="text-xs text-gray-400 mt-1">Signed-in customers with a paid order are published instantly as "Verified purchase". Others are published after approval.</p></div>`;
+    <button id="rsend" class="btn-p mt-2 px-6 py-2 font-bold text-sm">Submit review</button><p id="rmsg" class="text-sm mt-2"></p>
+    <p class="text-xs text-gray-400 mt-1">Signed-in customers with a paid order are marked "Verified purchase".</p></div>`;
+}
+function bindReview() {
+  let n = 0; const m = $('rmsg');
+  document.querySelectorAll('.rs').forEach(b => b.onclick = () => { n = Number(b.dataset.n); document.querySelectorAll('.rs').forEach(x => x.classList.toggle('on', Number(x.dataset.n) <= n)); });
+  $('rsend').onclick = async () => {
+    if (!n) { m.textContent = 'Pick a star rating.'; m.style.color = '#dc2626'; return; }
+    $('rsend').disabled = true;
+    try { const r = await api({ action: 'submitReview', productId: P.id, stars: n, name: $('rn').value, email: $('re').value, text: $('rt').value });
+      m.style.color = '#059669'; m.textContent = r.published ? 'Thanks! Your review is live. Refresh to see it.' : 'Thanks! Your review will appear after approval.'; }
+    catch (e) { m.style.color = '#dc2626'; m.textContent = e.message; $('rsend').disabled = false; }
+  };
 }
 
 async function load() {
@@ -83,8 +118,9 @@ async function load() {
   if (!id) { L.textContent = 'No product ID.'; return; }
   try {
     const d = await (await fetch(API)).json(); if (d.error) throw new Error(d.error);
-    S = d.settings; applyTheme(S); initAuth(S, () => { if (on(S.reviews_on)) $('reviews').innerHTML = reviewsHtml(d.reviews.filter(r => r.productId === P.id)), bindReview(); });
-    P = d.products.find(p => p.id === id);
+    S = d.settings; applyTheme(S);
+    initAuth(S, () => { if (on(S.reviews_on)) { $('reviews').innerHTML = reviewsHtml(d.reviews.filter(r => r.productId === P.id)); bindReview(); } });
+    P = d.products.find(p => p.id === id); V = P && P.variants;
     if (!P) { L.textContent = 'Product not found.'; return; }
     document.title = P.title + ' | ' + S.site_name;
     $('title').textContent = P.title;
@@ -92,7 +128,7 @@ async function load() {
 
     imgs = P.images.length ? P.images : [PLACEHOLDER];
     $('gal').innerHTML = carousel(imgs);
-    const track = $('gal').querySelector('.car-track'), thumbs = [];
+    track = $('gal').querySelector('.car-track'); const thumbs = [];
     imgs.forEach((u, i) => { const t = document.createElement('img'); t.referrerPolicy = 'no-referrer'; t.src = u; t.className = 'thumb w-full aspect-square object-contain rounded-lg ' + (i ? '' : 'active');
       t.onclick = () => track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }); $('thumbs').appendChild(t); thumbs.push(t); });
     if (imgs.length < 2) $('thumbs').classList.add('hidden');
@@ -102,41 +138,25 @@ async function load() {
     const lbGo = (dd) => $('lbt').scrollBy({ left: dd * $('lbt').clientWidth, behavior: 'smooth' });
     $('lbx').onclick = () => $('lb').classList.remove('open'); $('lbp').onclick = () => lbGo(-1); $('lbn').onclick = () => lbGo(1);
     $('lbt').onclick = (e) => { if (e.target.tagName !== 'IMG') $('lb').classList.remove('open'); };
-    document.onkeydown = (e) => { if (!$('lb').classList.contains('open')) return; if (e.key === 'Escape') $('lb').classList.remove('open'); if (e.key === 'ArrowLeft') lbGo(-1); if (e.key === 'ArrowRight') lbGo(1); };
-
+    document.addEventListener('keydown', (e) => { if (!$('lb').classList.contains('open')) return; if (e.key === 'Escape') $('lb').classList.remove('open'); if (e.key === 'ArrowLeft') lbGo(-1); if (e.key === 'ArrowRight') lbGo(1); });
     if (P.videoUrl && video(P.videoUrl)) { $('video').innerHTML = video(P.videoUrl); $('video').classList.remove('hidden'); }
 
     if (on(S.reviews_on) && P.reviewCount) $('rating').innerHTML = `${stars(P.rating)} <b>${P.rating}</b> <a href="#reviews" class="text-gray-500 underline">(${P.reviewCount} reviews)</a>`;
-    $('price').textContent = money(P.price) + ' CAD';
-    const pre = P.status === 'upcoming' && P.preorder, canBuy = (P.status === 'live' || pre) && P.qty > 0;
-    if (P.status === 'upcoming') $('meta').textContent = 'Coming ' + (P.startsAt ? new Date(P.startsAt).toLocaleDateString() : 'soon') + (pre ? ' - pre-order now' : '');
+    if (P.status === 'upcoming') $('meta').textContent = 'Coming ' + (P.startsAt ? new Date(P.startsAt).toLocaleDateString() : 'soon') + (P.preorder ? ' - pre-order now' : '');
     if (P.status === 'archived') $('meta').textContent = 'This deal has ended.';
-    if (P.status === 'live' && on(S.stock_bar_on)) $('stock').innerHTML = stockBar(P, S);
-    if (!canBuy) { $('qtyRow').classList.add('hidden'); $('buy').disabled = true; $('buy').textContent = P.status === 'archived' ? 'Deal ended' : P.status === 'upcoming' ? 'Coming soon' : 'Sold out'; }
-    else {
-      const upd = () => { $('buy').textContent = (pre ? 'Pre-order' : 'Buy now') + ' - ' + money(P.price * Number($('qty').value)); };
-      $('minus').onclick = () => { $('qty').value = Math.max(1, $('qty').value - 1); upd(); };
-      $('plus').onclick = () => { $('qty').value = Math.min(P.qty, Number($('qty').value) + 1); upd(); };
-      upd();
-      $('buy').onclick = async () => { $('buy').disabled = true; $('err').textContent = '';
-        try { const r = await api({ action: 'checkout', productId: P.id, qty: Number($('qty').value) }); location.href = r.url; }
-        catch (e) { $('err').textContent = e.message; $('buy').disabled = false; } };
-    }
+
+    $('minus').onclick = () => { $('qty').value = Math.max(1, $('qty').value - 1); refresh(); };
+    $('plus').onclick = () => { $('qty').value = Math.min((curItem() || P).qty, Number($('qty').value) + 1); refresh(); };
+    $('buy').onclick = async () => {
+      const it = curItem(); if (V && !it) return;
+      $('buy').disabled = true; $('err').textContent = '';
+      try { const r = await api({ action: 'checkout', productId: P.id, qty: Number($('qty').value), variant: it ? it.key : '' }); location.href = r.url; }
+      catch (e) { $('err').textContent = e.message; $('buy').disabled = false; }
+    };
+    renderOpts(); refresh();
     if (on(S.reviews_on)) { $('reviews').innerHTML = reviewsHtml(d.reviews.filter(r => r.productId === P.id)); bindReview(); }
     L.classList.add('hidden'); $('content').classList.remove('hidden');
   } catch (e) { L.textContent = 'Failed to load: ' + e.message; }
-}
-
-function bindReview() {
-  let n = 0; const m = $('rmsg');
-  document.querySelectorAll('.rs').forEach(b => b.onclick = () => { n = Number(b.dataset.n); document.querySelectorAll('.rs').forEach(x => x.classList.toggle('on', Number(x.dataset.n) <= n)); });
-  $('rsend').onclick = async () => {
-    if (!n) { m.textContent = 'Pick a star rating.'; m.style.color = '#dc2626'; return; }
-    $('rsend').disabled = true;
-    try { const r = await api({ action: 'submitReview', productId: P.id, stars: n, name: $('rn').value, email: $('re').value, text: $('rt').value });
-      m.style.color = '#059669'; m.textContent = r.published ? 'Thanks! Your verified review is live. Refresh to see it.' : 'Thanks! Your review will appear after approval.'; }
-    catch (e) { m.style.color = '#dc2626'; m.textContent = e.message; $('rsend').disabled = false; }
-  };
 }
 load();
 </script>

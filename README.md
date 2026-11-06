@@ -156,6 +156,8 @@ credentials, and it asserts the token is never written into the git remote).
 | Images missing after import | Set `IMGBB_API_KEY`. The sheet keeps the source URL as a fallback, so nothing is lost. |
 | Variants still "none" | Reload the extension after editing it, and use the current page (Shopify's `.js` endpoint needs the product page, not a collection page). |
 | Titles show `&#39;` | Entities stored from an old import: `node scripts/repair-data.mjs --fix-entities` (dry-run first). |
+| Variant options are whole product titles or SKUs | Scraped by an older extension build (JSON-LD `name`/`sku`). Reload the extension (v5.1+) and rescrape; option values are now short colour/size words only. |
+| Admin Save throws `reading 'trim'` | Fixed in v5.1: variant rows used `data-key`, the attribute Save also scanned for private keys. Hard-refresh `/admin.html`. |
 | Checkout says "not available" | Product status must be `live` (or `upcoming` + pre-order), price > 0, stock > 0. |
 | Extension blocked on a custom domain | Add `https://your-domain/*` to `host_permissions` in `manifest.json` and reload. |
 | Orders stuck on pending | `installTrigger()` not installed, or `STRIPE_SECRET_KEY` missing. Paid visits to `account.html` self-confirm via `confirmOrder`. |

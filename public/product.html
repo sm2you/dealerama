@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Details | Dealerama</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .gallery-img { cursor: pointer; border: 2px solid transparent; }
+  .gallery-img.active { border-color: #000; }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans">
+<nav class="bg-white shadow-sm p-6"><a href="index.html" class="text-xl font-black uppercase">&larr; Back</a></nav>
+<div id="loading" class="text-center py-24 text-gray-500">Loading...</div>
+<main id="product-content" class="max-w-6xl mx-auto px-6 py-12 hidden">
+  <div class="grid md:grid-cols-2 gap-12 bg-white p-8 rounded-2xl shadow-sm">
+    <div>
+      <div class="aspect-square bg-gray-100 rounded-xl overflow-hidden mb-4"><img id="main-image" src="" class="w-full h-full object-contain"></div>
+      <div id="thumbnail-grid" class="grid grid-cols-5 gap-2"></div>
+    </div>
+    <div class="flex flex-col">
+      <h1 id="title" class="text-3xl font-bold mb-2"></h1>
+      <p id="price" class="text-3xl font-black text-green-600 mb-6"></p>
+      <a id="stripe-link" href="#" target="_blank" class="bg-black text-white text-center py-4 rounded-full font-bold text-lg mb-8">Buy Now</a>
+      <div class="border-t pt-6"><h3 class="text-lg font-bold mb-4">Description</h3><div id="description" class="text-gray-600 text-sm"></div></div>
+    </div>
+  </div>
+</main>
+<script>
+async function loadProduct() {
+  const productId = new URLSearchParams(window.location.search).get('id');
+  if (!productId) return;
+  try {
+    const res = await fetch('/.netlify/functions/get-products');
+    const data = await res.json();
+    const product = data.products.find(p => p.id === productId);
+    if (!product) return document.getElementById('loading').textContent = 'Not found.';
+    document.getElementById('title').textContent = product.title;
+    document.getElementById('price').textContent = `$${product.price}`;
+    document.getElementById('description').innerHTML = product.description || '';
+    document.getElementById('stripe-link').href = product.stripeLink || '#';
+    if (product.images && product.images.length > 0) {
+      document.getElementById('main-image').src = product.images[0];
+      product.images.forEach((imgUrl, i) => {
+        const thumb = document.createElement('img');
+        thumb.src = imgUrl;
+        thumb.className = `gallery-img w-full aspect-square object-cover rounded-md ${i === 0 ? 'active' : ''}`;
+        thumb.onclick = () => {
+          document.getElementById('main-image').src = imgUrl;
+          document.querySelectorAll('.gallery-img').forEach(el => el.classList.remove('active'));
+          thumb.classList.add('active');
+        };
+        document.getElementById('thumbnail-grid').appendChild(thumb);
+      });
+    }
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('product-content').classList.remove('hidden');
+  } catch (err) {}
+}
+loadProduct();
+</script>
+</body>
+</html>

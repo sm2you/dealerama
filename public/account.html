@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My orders</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="text-gray-800">
+<div id="banner" style="display:none" class="text-white text-center text-sm font-bold py-2 px-4"></div>
+<nav class="bg-white shadow-sm p-5 mb-8"><div class="max-w-4xl mx-auto flex justify-between items-center"><a href="index.html" id="brand" class="text-2xl"></a><div id="auth"></div></div></nav>
+<main class="max-w-4xl mx-auto px-6">
+  <div id="paid" class="hidden mb-6 rounded-xl bg-green-50 border border-green-200 text-green-800 p-4 font-semibold">Payment received. Thank you! Your order will appear below within a few minutes.</div>
+  <h1 class="text-3xl mb-6">Your orders</h1>
+  <div id="list" class="text-gray-500">Loading...</div>
+</main>
+<script src="site.js"></script>
+<script>
+if (location.search.includes('paid=1')) document.getElementById('paid').classList.remove('hidden');
+const STEPS = ['processing', 'shipped', 'delivered'];
+async function showOrders() {
+  const box = document.getElementById('list');
+  if (!authUser()) { box.textContent = 'Sign in with Google (top right) to see your orders.'; return; }
+  try {
+    const d = await api({ action: 'myOrders' });
+    box.innerHTML = d.orders.length ? d.orders.map(o => {
+      const i = Math.max(0, STEPS.indexOf(o.shipStatus));
+      return `<div class="bg-white rounded-xl border mb-4 overflow-hidden"><div class="bg-gray-50 px-5 py-3 text-xs text-gray-500 flex flex-wrap justify-between gap-2"><span>ORDER PLACED ${esc(o.date.slice(0, 10))}</span><span>TOTAL ${money(o.amount)}</span><span>ORDER # ${esc(o.id)}</span></div>
+      <div class="p-5 flex gap-4"><a href="product.html?id=${encodeURIComponent(o.productId)}"><img src="${esc(o.image || PLACEHOLDER)}" referrerpolicy="no-referrer" class="w-24 h-24 object-contain bg-white border rounded"></a>
+        <div class="flex-1"><a href="product.html?id=${encodeURIComponent(o.productId)}" class="font-bold hover:underline">${esc(o.title)}</a><p class="text-sm text-gray-500">Qty ${o.qty}${o.payment ? ' · ' + esc(o.payment) : ''}</p>
+        ${o.address ? `<p class="text-xs text-gray-500 mt-1">Ship to: ${esc(o.address)}</p>` : ''}
+        <div class="flex items-center gap-2 mt-3 text-xs font-bold">${STEPS.map((s, k) => `<span class="px-2 py-1 rounded-full ${k <= i ? 'text-white' : 'bg-gray-200 text-gray-500'}" ${k <= i ? 'style="background:var(--a)"' : ''}>${s}</span>`).join('<span class="text-gray-300">—</span>')}</div>
+        ${o.tracking ? `<p class="text-sm mt-2">Tracking: <b>${esc(o.tracking)}</b></p>` : ''}</div></div></div>`; }).join('') : 'No orders yet.';
+  } catch (e) { box.textContent = e.message; }
+}
+(async () => { const d = await (await fetch(API)).json(); applyTheme(d.settings); initAuth(d.settings, showOrders); if (!d.settings.google_client_id) document.getElementById('list').textContent = 'Customer login is not set up yet.'; else showOrders(); })();
+</script>
+</body>
+</html>

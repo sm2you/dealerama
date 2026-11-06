@@ -42,7 +42,7 @@ Chrome extension → Google Apps Script (Google Sheet + ImgBB) → Netlify store
 | `netlify.toml` | Publish dir, `/api` rewrite, security headers. |
 | `extension/` | MV3 extension: `popup.js` scrapers, `staging.html/js` review + publish. |
 | `public/` | Storefront (`index`, `product`, `account`), `admin.html`, shared `site.js`. |
-| `scripts/` | `configure.mjs` (writes + verifies the live settings), `push.mjs` (creates the GitHub repo and pushes). |
+| `scripts/` | `push.mjs` (creates the GitHub repo and pushes), `configure.mjs` (writes + verifies live settings), `probe.mjs` (which build is live, is `/api` up), `repair-data.mjs` (entity/placeholder cleanup, dry-run first). |
 | `test/` | 73 assertions with an in-memory Apps Script emulator, a DOM stub and a fake GitHub API. |
 
 ## Publishing this repo to GitHub
@@ -61,6 +61,10 @@ The token must be a **classic** PAT with `repo` + `workflow` (the repo contains
 cannot create repositories unless granted *Administration: write* on all repositories.
 
 Already have a repo? `git remote add origin https://github.com/<you>/<repo>.git && git push -u origin main`.
+
+> The CI workflow lives at `ci/github-workflows-ci.yml` instead of `.github/workflows/`.
+> GitHub rejects any push touching `.github/workflows/` unless the token has the **Workflows**
+> permission; move the file into place (web UI or a token with that scope) to enable CI.
 
 ## Deploy
 
@@ -144,12 +148,14 @@ credentials, and it asserts the token is never written into the git remote).
 
 | Symptom | Check |
 | --- | --- |
+| `/api` is 404 but `/api/health` works | The function declares `config.path` — a custom path replaces `/.netlify/functions/api` and `'/api/*'` does not match bare `/api`. Route it from `netlify.toml` instead (`node scripts/probe.mjs` diagnoses this). |
 | `API returned an HTML page` | Web App access is not **Anyone**, or `APPS_SCRIPT_URL` is an `/edit` link. |
 | `APPS_SCRIPT_URL is not set` | Netlify env var missing → redeploy after adding it. |
 | `Wrong admin secret` | Use the secret printed by `setup()`; run `newAdminSecret()` to rotate. |
 | Storefront shows no products | Products must be `live`/`upcoming`; drafts are hidden. `GET /api` returns what the sheet has. |
 | Images missing after import | Set `IMGBB_API_KEY`. The sheet keeps the source URL as a fallback, so nothing is lost. |
 | Variants still "none" | Reload the extension after editing it, and use the current page (Shopify's `.js` endpoint needs the product page, not a collection page). |
+| Titles show `&#39;` | Entities stored from an old import: `node scripts/repair-data.mjs --fix-entities` (dry-run first). |
 | Checkout says "not available" | Product status must be `live` (or `upcoming` + pre-order), price > 0, stock > 0. |
 | Extension blocked on a custom domain | Add `https://your-domain/*` to `host_permissions` in `manifest.json` and reload. |
 | Orders stuck on pending | `installTrigger()` not installed, or `STRIPE_SECRET_KEY` missing. Paid visits to `account.html` self-confirm via `confirmOrder`. |

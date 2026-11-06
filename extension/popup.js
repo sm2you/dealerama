@@ -222,6 +222,28 @@ async function runScrapeInPage() {
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
+  // Titles are rendered as text, so a literal "Women&#39;s" would show as-is.
+  const decodeEntities = (input) => {
+    let out = String(input == null ? '' : input);
+    let previous;
+    let passes = 0;
+    while (out !== previous && passes < 2) {
+      previous = out;
+      out = out.replace(/&(#x?[0-9a-f]+|[a-z][a-z0-9]*);/gi, (match, code) => {
+        if (code[0] === '#') {
+          const hex = code[1] === 'x' || code[1] === 'X';
+          const n = parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10);
+          return Number.isFinite(n) && n > 0 && n < 0x10ffff ? String.fromCodePoint(n) : match;
+        }
+        const map = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+        const k = code.toLowerCase();
+        return Object.prototype.hasOwnProperty.call(map, k) ? map[k] : match;
+      });
+      passes++;
+    }
+    return out;
+  };
+
   const parsePrice = (input) => {
     if (input == null) return null;
     if (typeof input === 'number' && isFinite(input)) return input;
@@ -285,7 +307,7 @@ async function runScrapeInPage() {
     textOf(document.querySelector('#productTitle, #title, h1[itemprop="name"], .product_title, .product-title, h1')) ||
     meta('meta[property="og:title"]') ||
     document.title;
-  title = String(title || '').replace(/\s+/g, ' ').trim();
+  title = decodeEntities(String(title || '').replace(/\s+/g, ' ').trim());
 
   /* ---------- price ---------- */
   const priceSelectors = isAmazon

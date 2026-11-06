@@ -20,10 +20,10 @@
 
 <main id="product-content" class="max-w-6xl mx-auto px-6 py-12 hidden">
   <div class="grid md:grid-cols-2 gap-16">
-    
+
     <div>
       <div class="aspect-[4/5] bg-gray-50 rounded-2xl overflow-hidden mb-4 border border-gray-100 flex items-center justify-center">
-        <img id="main-image" src="" class="w-full h-full object-contain p-4">
+        <img id="main-image" src="" referrerpolicy="no-referrer" class="w-full h-full object-contain p-4">
       </div>
       <div id="thumbnail-grid" class="grid grid-cols-4 gap-4"></div>
     </div>
@@ -32,8 +32,8 @@
       <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Dealerama Exclusive</span>
       <h1 id="title" class="text-4xl md:text-5xl font-black mb-4 leading-tight"></h1>
       <p id="price" class="text-3xl font-bold text-gray-900 mb-8"></p>
-      
-      <a id="stripe-link" href="#" target="_blank" class="bg-black hover:bg-gray-800 text-white text-center py-5 rounded-full font-bold text-lg mb-8 transition-colors shadow-lg">
+
+      <a id="stripe-link" href="#" target="_blank" rel="noopener" class="bg-black hover:bg-gray-800 text-white text-center py-5 rounded-full font-bold text-lg mb-8 transition-colors shadow-lg">
         Buy Now with Stripe
       </a>
 
@@ -46,38 +46,73 @@
 </main>
 
 <script>
+const PLACEHOLDER = 'https://placehold.co/600x600?text=No+Image';
+
+// Keep only safe formatting tags from the scraped description
+function sanitize(html) {
+  const allowed = new Set(['P', 'BR', 'UL', 'OL', 'LI', 'B', 'STRONG', 'I', 'EM']);
+  const doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+  const walk = (node) => {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === 1) {
+        if (!allowed.has(child.tagName)) {
+          if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT'].includes(child.tagName)) { child.remove(); return; }
+          walk(child);
+          child.replaceWith(...child.childNodes);
+        } else {
+          [...child.attributes].forEach(a => child.removeAttribute(a.name));
+          walk(child);
+        }
+      }
+    });
+  };
+  walk(doc.body.firstChild);
+  return doc.body.firstChild.innerHTML;
+}
+
 async function loadProduct() {
+  const loading = document.getElementById('loading');
   const productId = new URLSearchParams(window.location.search).get('id');
-  if (!productId) return document.getElementById('loading').textContent = 'No product ID provided.';
+  if (!productId) { loading.textContent = 'No product ID provided.'; return; }
 
   try {
     const res = await fetch('/.netlify/functions/get-products');
     const data = await res.json();
-    
-    // Because of the backend fix, we can just match the IDs directly
-    const product = data.products.find(p => String(p.id) === String(productId));
-    
-    if (!product) {
-      document.getElementById('loading').textContent = 'Product not found.';
-      return;
+    if (data.error) throw new Error(data.error);
+
+    const product = (data.products || []).find(p => String(p.id) === String(productId));
+    if (!product) { loading.textContent = 'Product not found.'; return; }
+
+    const price = Number(product.price);
+    document.title = product.title + ' | Dealerama';
+    document.getElementById('title').textContent = product.title;
+    document.getElementById('price').textContent = `$${isNaN(price) || !product.price ? '0.00' : price.toFixed(2)}`;
+    document.getElementById('description').innerHTML = product.description
+      ? sanitize(String(product.description))
+      : '<p>No description available.</p>';
+
+    const buy = document.getElementById('stripe-link');
+    if (product.stripeLink && /^https:\/\//.test(product.stripeLink)) {
+      buy.href = product.stripeLink;
+    } else {
+      buy.style.display = 'none';
     }
 
-    document.getElementById('title').textContent = product.title;
-    document.getElementById('price').textContent = `$${product.price || '0.00'}`;
-    document.getElementById('description').innerHTML = product.description || '<p>No description available.</p>';
-    document.getElementById('stripe-link').href = product.stripeLink || '#';
+    const main = document.getElementById('main-image');
+    main.onerror = () => { main.onerror = null; main.src = PLACEHOLDER; };
+    const images = product.images || [];
+    main.src = images.length ? images[0] : PLACEHOLDER;
 
-    if (product.images && product.images.length > 0) {
-      document.getElementById('main-image').src = product.images[0];
-
-      const thumbGrid = document.getElementById('thumbnail-grid');
-      product.images.forEach((imgUrl, i) => {
+    const thumbGrid = document.getElementById('thumbnail-grid');
+    if (images.length > 1) {
+      images.forEach((imgUrl, i) => {
         const thumb = document.createElement('img');
+        thumb.referrerPolicy = 'no-referrer';
         thumb.src = imgUrl;
         thumb.className = `gallery-img w-full aspect-square object-cover rounded-lg bg-gray-50 p-2 ${i === 0 ? 'active' : ''}`;
-        
+        thumb.onerror = () => thumb.remove();
         thumb.onclick = () => {
-          document.getElementById('main-image').src = imgUrl;
+          main.src = imgUrl;
           document.querySelectorAll('.gallery-img').forEach(el => el.classList.remove('active'));
           thumb.classList.add('active');
         };
@@ -85,10 +120,10 @@ async function loadProduct() {
       });
     }
 
-    document.getElementById('loading').classList.add('hidden');
+    loading.classList.add('hidden');
     document.getElementById('product-content').classList.remove('hidden');
   } catch (err) {
-    document.getElementById('loading').textContent = 'Failed to load product. Check connection.';
+    loading.textContent = 'Failed to load product: ' + err.message;
   }
 }
 loadProduct();

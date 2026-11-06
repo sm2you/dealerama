@@ -3,130 +3,139 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Product Details | Dealerama</title>
+<title>Product | Dealerama</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<style>
-  .gallery-img { cursor: pointer; border: 2px solid transparent; transition: border 0.2s; }
-  .gallery-img.active { border-color: #000; }
-</style>
+<style>.thumb{cursor:pointer;border:2px solid transparent}.thumb.active{border-color:var(--p)}#lb{display:none}#lb.open{display:flex}</style>
 </head>
-<body class="bg-white text-gray-900 font-sans">
-
-<nav class="border-b p-6 bg-white sticky top-0 z-50">
-  <a href="index.html" class="text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-black transition">&larr; Back to Dealerama</a>
+<body class="text-gray-900">
+<div id="banner" style="display:none" class="text-white text-center text-sm font-bold py-2 px-4"></div>
+<nav class="border-b p-6 bg-white sticky top-0 z-40 flex justify-between items-center">
+  <a href="index.html" class="text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-black">&larr; Back</a>
+  <a href="index.html" id="brand" class="text-xl font-black uppercase"></a>
 </nav>
-
 <div id="loading" class="text-center py-32 text-gray-400">Loading product...</div>
 
-<main id="product-content" class="max-w-6xl mx-auto px-6 py-12 hidden">
-  <div class="grid md:grid-cols-2 gap-16">
-
+<main id="content" class="max-w-7xl mx-auto px-6 py-10 hidden">
+  <div class="grid lg:grid-cols-[3fr_2fr] gap-12">
     <div>
-      <div class="aspect-[4/5] bg-gray-50 rounded-2xl overflow-hidden mb-4 border border-gray-100 flex items-center justify-center">
-        <img id="main-image" src="" referrerpolicy="no-referrer" class="w-full h-full object-contain p-4">
+      <div class="bg-white rounded-2xl border border-gray-100 flex items-center justify-center" style="height:min(80vh,720px)">
+        <img id="main" src="" referrerpolicy="no-referrer" title="Click to enlarge" class="max-w-full max-h-full object-contain p-4 cursor-zoom-in">
       </div>
-      <div id="thumbnail-grid" class="grid grid-cols-4 gap-4"></div>
+      <div id="thumbs" class="grid grid-cols-5 sm:grid-cols-6 gap-3 mt-4"></div>
     </div>
-
-    <div class="flex flex-col justify-center">
-      <span class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Dealerama Exclusive</span>
-      <h1 id="title" class="text-4xl md:text-5xl font-black mb-4 leading-tight"></h1>
-      <p id="price" class="text-3xl font-bold text-gray-900 mb-8"></p>
-
-      <a id="stripe-link" href="#" target="_blank" rel="noopener" class="bg-black hover:bg-gray-800 text-white text-center py-5 rounded-full font-bold text-lg mb-8 transition-colors shadow-lg">
-        Buy Now with Stripe
-      </a>
-
-      <div class="border-t pt-8 mt-4">
-        <h3 class="text-sm font-bold uppercase tracking-widest text-gray-400 mb-4">Product Description</h3>
-        <div id="description" class="text-gray-600 leading-relaxed text-sm space-y-4"></div>
+    <div>
+      <h1 id="title" class="text-2xl md:text-3xl font-extrabold leading-snug mb-2"></h1>
+      <div id="rating" class="mb-3 text-sm"></div>
+      <p id="price" class="text-3xl font-black mb-1"></p>
+      <p id="meta" class="text-sm text-gray-500 mb-2"></p>
+      <div id="stock"></div>
+      <div id="buyBox" class="mt-6">
+        <div id="qtyRow" class="flex items-center gap-3 mb-4">
+          <span class="text-sm font-bold">Qty</span>
+          <button id="minus" class="w-10 h-10 rounded-full border text-xl">−</button>
+          <input id="qty" value="1" readonly class="w-14 text-center border rounded-lg py-2 font-bold">
+          <button id="plus" class="w-10 h-10 rounded-full border text-xl">+</button>
+        </div>
+        <button id="buy" class="btn-p w-full py-4 rounded-full font-bold text-lg shadow-lg"></button>
+        <p id="err" class="text-red-600 text-sm mt-2"></p>
+      </div>
+      <div class="border-t pt-6 mt-8">
+        <h3 class="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">Description</h3>
+        <div id="desc" class="text-gray-600 leading-relaxed text-sm space-y-3"></div>
       </div>
     </div>
   </div>
+  <section id="reviews" class="mt-16 max-w-3xl"></section>
 </main>
 
+<div id="lb" class="fixed inset-0 z-[100] bg-black/90 items-center justify-center">
+  <button id="lbx" class="absolute top-4 right-6 text-white text-4xl">✕</button>
+  <button id="lbp" class="absolute left-4 text-white text-5xl px-3">‹</button>
+  <img id="lbi" referrerpolicy="no-referrer" class="max-h-[92vh] max-w-[92vw] object-contain">
+  <button id="lbn" class="absolute right-4 text-white text-5xl px-3">›</button>
+</div>
+
+<script src="site.js"></script>
 <script>
-const PLACEHOLDER = 'https://placehold.co/600x600?text=No+Image';
+const $ = (id) => document.getElementById(id);
+let P, imgs = [], cur = 0;
 
-// Keep only safe formatting tags from the scraped description
-function sanitize(html) {
-  const allowed = new Set(['P', 'BR', 'UL', 'OL', 'LI', 'B', 'STRONG', 'I', 'EM']);
-  const doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
-  const walk = (node) => {
-    [...node.childNodes].forEach(child => {
-      if (child.nodeType === 1) {
-        if (!allowed.has(child.tagName)) {
-          if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT'].includes(child.tagName)) { child.remove(); return; }
-          walk(child);
-          child.replaceWith(...child.childNodes);
-        } else {
-          [...child.attributes].forEach(a => child.removeAttribute(a.name));
-          walk(child);
-        }
-      }
-    });
-  };
-  walk(doc.body.firstChild);
-  return doc.body.firstChild.innerHTML;
+function show(i) {
+  cur = (i + imgs.length) % imgs.length;
+  $('main').src = imgs[cur]; $('lbi').src = imgs[cur];
+  document.querySelectorAll('.thumb').forEach((t, k) => t.classList.toggle('active', k === cur));
 }
 
-async function loadProduct() {
-  const loading = document.getElementById('loading');
-  const productId = new URLSearchParams(window.location.search).get('id');
-  if (!productId) { loading.textContent = 'No product ID provided.'; return; }
-
+async function load() {
+  const L = $('loading'), id = new URLSearchParams(location.search).get('id');
+  if (!id) { L.textContent = 'No product ID.'; return; }
   try {
-    const res = await fetch('/.netlify/functions/get-products');
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    const d = await (await fetch(API)).json();
+    if (d.error) throw new Error(d.error);
+    applyTheme(d.settings);
+    P = d.products.find(p => p.id === id);
+    if (!P) { L.textContent = 'Product not found.'; return; }
+    document.title = P.title + ' | ' + d.settings.site_name;
+    $('title').textContent = P.title;
+    $('desc').innerHTML = P.description ? sanitize(P.description) : '<p>No description.</p>';
 
-    const product = (data.products || []).find(p => String(p.id) === String(productId));
-    if (!product) { loading.textContent = 'Product not found.'; return; }
+    imgs = P.images.length ? P.images : [PLACEHOLDER];
+    $('main').onerror = () => { $('main').onerror = null; $('main').src = PLACEHOLDER; };
+    imgs.forEach((u, i) => {
+      const t = document.createElement('img');
+      t.referrerPolicy = 'no-referrer'; t.src = u;
+      t.className = 'thumb w-full aspect-square object-cover rounded-lg bg-white p-1';
+      t.onclick = () => show(i); $('thumbs').appendChild(t);
+    });
+    show(0);
+    if (imgs.length < 2) $('thumbs').classList.add('hidden');
+    $('main').onclick = () => $('lb').classList.add('open');
+    $('lbx').onclick = () => $('lb').classList.remove('open');
+    $('lbp').onclick = () => show(cur - 1); $('lbn').onclick = () => show(cur + 1);
+    $('lb').onclick = (e) => { if (e.target === $('lb')) $('lb').classList.remove('open'); };
+    document.onkeydown = (e) => {
+      if (!$('lb').classList.contains('open')) return;
+      if (e.key === 'Escape') $('lb').classList.remove('open');
+      if (e.key === 'ArrowLeft') show(cur - 1); if (e.key === 'ArrowRight') show(cur + 1);
+    };
 
-    const price = Number(product.price);
-    document.title = product.title + ' | Dealerama';
-    document.getElementById('title').textContent = product.title;
-    document.getElementById('price').textContent = `$${isNaN(price) || !product.price ? '0.00' : price.toFixed(2)}`;
-    document.getElementById('description').innerHTML = product.description
-      ? sanitize(String(product.description))
-      : '<p>No description available.</p>';
+    const revs = d.reviews.filter(r => r.productId === P.id), S = d.settings;
+    if (on(S.reviews_on) && P.reviewCount) $('rating').innerHTML = `${stars(P.rating)} <b>${P.rating}</b> <a href="#reviews" class="text-gray-500 underline">(${P.reviewCount} reviews)</a>`;
 
-    const buy = document.getElementById('stripe-link');
-    if (product.stripeLink && /^https:\/\//.test(product.stripeLink)) {
-      buy.href = product.stripeLink;
+    $('price').textContent = money(P.price) + ' CAD';
+    const pre = P.status === 'upcoming' && P.preorder;
+    const canBuy = (P.status === 'live' || pre) && P.qty > 0;
+    if (P.status === 'upcoming') $('meta').textContent = 'Coming ' + (P.startsAt ? new Date(P.startsAt).toLocaleDateString() : 'soon') + (pre ? ' - pre-order now' : '');
+    if (P.status === 'archived') $('meta').textContent = 'This deal has ended.';
+    if (P.status === 'live' && on(S.stock_bar_on)) $('stock').innerHTML = stockBar(P);
+
+    if (!canBuy) {
+      $('qtyRow').classList.add('hidden');
+      $('buy').disabled = true;
+      $('buy').textContent = P.status === 'archived' ? 'Deal ended' : P.status === 'upcoming' ? 'Coming soon' : 'Sold out';
     } else {
-      buy.style.display = 'none';
+      const upd = () => { const q = Number($('qty').value); $('buy').textContent = (pre ? 'Pre-order' : 'Buy now') + ' - ' + money(P.price * q); };
+      $('minus').onclick = () => { $('qty').value = Math.max(1, $('qty').value - 1); upd(); };
+      $('plus').onclick = () => { $('qty').value = Math.min(P.qty, Number($('qty').value) + 1); upd(); };
+      upd();
+      $('buy').onclick = async () => {
+        $('buy').disabled = true; $('err').textContent = '';
+        try { const r = await api({ action: 'checkout', productId: P.id, qty: Number($('qty').value) }); location.href = r.url; }
+        catch (e) { $('err').textContent = e.message; $('buy').disabled = false; }
+      };
     }
 
-    const main = document.getElementById('main-image');
-    main.onerror = () => { main.onerror = null; main.src = PLACEHOLDER; };
-    const images = product.images || [];
-    main.src = images.length ? images[0] : PLACEHOLDER;
-
-    const thumbGrid = document.getElementById('thumbnail-grid');
-    if (images.length > 1) {
-      images.forEach((imgUrl, i) => {
-        const thumb = document.createElement('img');
-        thumb.referrerPolicy = 'no-referrer';
-        thumb.src = imgUrl;
-        thumb.className = `gallery-img w-full aspect-square object-cover rounded-lg bg-gray-50 p-2 ${i === 0 ? 'active' : ''}`;
-        thumb.onerror = () => thumb.remove();
-        thumb.onclick = () => {
-          main.src = imgUrl;
-          document.querySelectorAll('.gallery-img').forEach(el => el.classList.remove('active'));
-          thumb.classList.add('active');
-        };
-        thumbGrid.appendChild(thumb);
-      });
+    if (on(S.reviews_on)) {
+      $('reviews').innerHTML = `<h2 class="text-2xl font-bold mb-4">Customer reviews</h2>` + (revs.length
+        ? revs.map(r => `<div class="border-b py-4"><div>${stars(r.stars)} <b class="ml-1">${esc(r.name)}</b>${r.verified ? ' <span class="text-xs text-green-700 font-semibold ml-1">Verified purchase</span>' : ''}</div>
+          <p class="text-sm text-gray-700 mt-1">${esc(r.text)}</p>
+          ${r.reply ? `<p class="text-sm bg-gray-50 border-l-4 pl-3 py-2 mt-2"><b>Seller reply:</b> ${esc(r.reply)}</p>` : ''}</div>`).join('')
+        : '<p class="text-gray-400 text-sm">No reviews yet.</p>');
     }
-
-    loading.classList.add('hidden');
-    document.getElementById('product-content').classList.remove('hidden');
-  } catch (err) {
-    loading.textContent = 'Failed to load product: ' + err.message;
-  }
+    L.classList.add('hidden'); $('content').classList.remove('hidden');
+  } catch (e) { L.textContent = 'Failed to load: ' + e.message; }
 }
-loadProduct();
+load();
 </script>
 </body>
 </html>

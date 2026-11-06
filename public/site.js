@@ -50,20 +50,48 @@ function initCarousels(root = document, onIndex) {
 }
 
 // ---- theme, fonts, banner, footer ----
+// ---- footer pages (open in a popup; editable in admin) ----
+const DEFAULT_PAGES = [
+  { title: 'Privacy Policy', body: '{business_name} collects only what we need to fill your order: your name, email, phone, shipping address and order details. Payments are handled by Stripe; we never see or store your card number.\nIf you sign in with Google, we receive your name and email address to show your orders. We only send marketing email if you agree to it (CASL).\nWe share information only with the services needed to run the store (payment processing, shipping carriers, hosting). We do not sell your information.\nUnder PIPEDA you may ask to see, correct or delete your personal information. Email {contact_email}.' },
+  { title: 'Terms & Conditions', body: 'By using this site and placing an order you agree to these terms. Prices are in Canadian dollars. Applicable taxes are added where required.\nQuantities are limited. We may cancel and refund an order if an item is out of stock or a price was listed in error. Deals marked as ended cannot be purchased. Pre-orders are charged at purchase and ship on or after the listed date.\nThese terms are governed by the laws of Ontario, Canada.' },
+  { title: 'Shipping', body: 'We ship within Canada. Orders usually ship in {ship_days} business days after payment. Once shipped, tracking details appear in My Orders.\nPlease double check your address at checkout, as we cannot redirect parcels once shipped.' },
+  { title: 'Returns & Refunds', body: 'You may request a return within {return_days} days of delivery for unused items in original packaging. Email {contact_email} with your order number.\nRefunds go back to your original payment method once the item is received and checked. Items that arrive damaged or incorrect are refunded or replaced at no cost to you.' },
+  { title: 'Contact', body: 'Questions about an order? Email {contact_email} and include your order number.' }
+];
+function pagesFrom(S) { try { const a = JSON.parse(S.footer_pages); if (Array.isArray(a) && a.length) return a; } catch (e) {} return DEFAULT_PAGES; }
+const fill = (t, S) => String(t).replace(/\{(\w+)\}/g, (m, k) => (S[k] !== undefined && S[k] !== '') ? S[k] : '[your ' + k.replace(/_/g, ' ') + ']');
+function openPage(title, body) {
+  let m = document.getElementById('pgm');
+  if (!m) {
+    m = document.createElement('div'); m.id = 'pgm';
+    m.style.cssText = 'position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px';
+    m.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:85vh;overflow:auto;padding:24px;position:relative"><button id="pgx" aria-label="Close" style="position:absolute;top:10px;right:16px;font-size:26px">✕</button><h3 id="pgt" style="font-size:1.4rem;margin:0 24px 12px 0"></h3><div id="pgb" style="font-size:.9rem;line-height:1.6"></div></div>';
+    document.body.appendChild(m);
+    const close = () => { m.style.display = 'none'; document.body.style.overflow = ''; };
+    m.onclick = (e) => { if (e.target === m) close(); }; m.querySelector('#pgx').onclick = close;
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  }
+  m.querySelector('#pgt').textContent = title;
+  m.querySelector('#pgb').innerHTML = String(body).split('\n').filter(x => x.trim()).map(p => `<p style="margin-bottom:.7rem">${esc(p)}</p>`).join('');
+  m.style.display = 'flex'; document.body.style.overflow = 'hidden';
+}
+
 function applyTheme(s) {
   const fams = [...new Set([s.font_body, s.font_heading])].filter(f => f && f !== 'system-ui');
   if (fams.length) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?' + fams.map(f => 'family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@400;700').join('&') + '&display=swap'; document.head.appendChild(l); }
-  const fam = (f) => `'${f}',system-ui,sans-serif`;
+  const fam = (f) => `'${f}',system-ui,sans-serif`, cols = Math.min(4, Math.max(1, Number(s.grid_cols) || 3));
   const css = document.createElement('style');
-  css.textContent = `:root{--p:${s.primary_color};--a:${s.accent_color}}
+  css.textContent = `:root{--p:${s.primary_color};--a:${s.accent_color};--price:${s.price_color}}
   html{font-size:${16 * (Number(s.font_scale) || 1)}px}
-  body{background:#f9f9f9;font-family:${fam(s.font_body)}}
+  body{background:${s.bg_color};color:${s.text_color};font-family:${fam(s.font_body)}}
+  nav{background:${s.nav_bg}!important}.price{color:var(--price)}
   h1,h2,h3,h4,.hd{font-family:${fam(s.font_heading)}!important;font-weight:${s.heading_weight}!important;font-style:${s.heading_style}!important;text-transform:${s.heading_transform}!important}
-  .btn-p{background:var(--p);color:#fff}.btn-p:hover{opacity:.85}.btn-p:disabled{background:#9ca3af;cursor:not-allowed}
+  .btn-p{background:var(--p);color:#fff;border-radius:${Number(s.button_radius) || 0}px!important}.btn-p:hover{opacity:.85}.btn-p:disabled{background:#9ca3af;cursor:not-allowed}
+  .card{border-radius:${Number(s.card_radius) || 0}px!important;transition:transform .2s}.card:hover{transform:translateY(-4px);box-shadow:0 10px 20px rgba(0,0,0,.06)}
+  .pgrid{display:grid;gap:2rem;grid-template-columns:1fr}@media(min-width:640px){.pgrid{grid-template-columns:repeat(${Math.min(cols, 2)},1fr)}}@media(min-width:1024px){.pgrid{grid-template-columns:repeat(${cols},1fr)}}
   .stars{display:inline-block;font-size:1.05em;letter-spacing:2px;background:linear-gradient(90deg,#f59e0b calc(var(--r)/5*100%),#d1d5db 0);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   .stars::before{content:'★★★★★'}
   .badge{position:absolute;top:12px;left:12px;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;background:var(--a);color:#fff;z-index:10}
-  .card{transition:transform .2s}.card:hover{transform:translateY(-4px);box-shadow:0 10px 20px rgba(0,0,0,.06)}
   .car{position:relative}.car-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch}.car-track::-webkit-scrollbar{display:none}
   .car-slide{flex:0 0 100%;scroll-snap-align:center;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;background:#fff;padding:12px;box-sizing:border-box;cursor:pointer}
   .car-slide img{width:100%;height:100%;object-fit:contain;user-select:none}
@@ -76,9 +104,10 @@ function applyTheme(s) {
   const b = document.getElementById('banner');
   if (b && on(s.banner_on) && s.banner_text) { b.textContent = s.banner_text; b.style.background = s.banner_color; b.style.display = 'block'; }
   if (on(s.footer_on)) {
-    const f = document.createElement('footer');
-    f.className = 'bg-white border-t mt-16 py-8 px-6 text-sm text-gray-500';
-    f.innerHTML = `<div class="max-w-6xl mx-auto flex flex-wrap gap-x-6 gap-y-2 justify-between"><span>© ${new Date().getFullYear()} ${esc(s.business_name)}</span><span class="flex flex-wrap gap-x-5 gap-y-1">${['privacy:Privacy Policy', 'terms:Terms & Conditions', 'shipping:Shipping', 'returns:Returns & Refunds', 'contact:Contact'].map(x => { const [k, l] = x.split(':'); return `<a class="hover:text-black" href="legal.html?p=${k}">${l}</a>`; }).join('')}</span></div>`;
+    const pages = pagesFrom(s), f = document.createElement('footer');
+    f.className = 'border-t mt-16 py-8 px-6 text-sm text-gray-500'; f.style.background = s.footer_bg;
+    f.innerHTML = `<div class="max-w-6xl mx-auto flex flex-wrap gap-x-6 gap-y-2 justify-between"><span>${esc(s.footer_text || ('© ' + new Date().getFullYear() + ' ' + s.business_name))}</span><span class="flex flex-wrap gap-x-5 gap-y-1">${pages.map((p, i) => `<button type="button" class="hover:text-black underline-offset-2 hover:underline" data-pg="${i}">${esc(p.title)}</button>`).join('')}</span></div>`;
+    f.querySelectorAll('[data-pg]').forEach(btn => btn.onclick = () => { const p = pages[btn.dataset.pg]; openPage(fill(p.title, s), fill(p.body, s)); });
     document.body.appendChild(f);
   }
 }

@@ -9,7 +9,7 @@
 </head>
 <body class="bg-gray-100 text-gray-800 p-3 md:p-8 pb-24">
 <div class="max-w-6xl mx-auto">
-  <div class="flex justify-between items-center mb-4 sticky top-0 bg-gray-100 py-2 z-30">
+  <div class="flex justify-between items-center mb-3 sticky top-0 bg-gray-100 py-2 z-30">
     <h1 class="text-xl font-black">Admin</h1>
     <div class="flex gap-2 items-center">
       <button id="sync" class="bg-white border px-3 py-1 rounded text-sm">Sync payments</button>
@@ -21,7 +21,7 @@
   <div id="login" class="bg-white p-6 rounded-xl max-w-sm"><label class="text-xs font-bold">Admin secret</label>
     <input id="key" type="password" class="w-full border rounded p-2 my-2"><button id="go" class="bg-black text-white w-full py-2 rounded font-bold">Enter</button></div>
   <div id="app" class="hidden">
-    <div id="tabs" class="flex gap-2 mb-4"></div>
+    <div id="tabs" class="flex gap-2 mb-4 flex-wrap"></div>
     <div id="pane-products"></div><div id="pane-reviews" class="hidden"></div><div id="pane-settings" class="hidden"></div><div id="pane-orders" class="hidden"></div>
   </div>
 </div>
@@ -35,32 +35,46 @@ const C = 'border rounded p-1 text-sm w-full bg-white';
 const opt = (v, list) => list.map(x => `<option ${x === v ? 'selected' : ''}>${x}</option>`).join('');
 
 async function load() {
-  try { D = await call('adminGet'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); settingsDirty = false; $('pane-products').dataset.built = 'stale'; render(); }
+  try { D = await call('adminGet'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); settingsDirty = false; build(); }
   catch (e) { $('login').classList.remove('hidden'); $('app').classList.add('hidden'); if (K) say(e.message, 1); }
 }
 $('go').onclick = () => { K = $('key').value.trim(); sessionStorage.setItem('k', K); load(); };
 $('out').onclick = () => { sessionStorage.clear(); location.reload(); };
 $('sync').onclick = async () => { try { const r = await call('syncPayments'); say(r.updated + ' paid order(s) applied.'); load(); } catch (e) { say(e.message, 1); } };
 
-function render() {
+function build() { products(); reviews(); settings(); orders(); showTab(); }
+function showTab() {
   ['products', 'reviews', 'settings', 'orders'].forEach(t => $('pane-' + t).classList.toggle('hidden', t !== tab));
   $('tabs').innerHTML = ['products', 'reviews', 'settings', 'orders'].map(t => `<button data-t="${t}" class="px-4 py-2 rounded font-bold ${t === tab ? 'bg-black text-white' : 'bg-white'}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('');
-  $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
-  if (!$('pane-products').dataset.built || $('pane-products').dataset.built === 'stale') { products(); reviews(); settings(); orders(); $('pane-products').dataset.built = 1; }
+  $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { tab = b.dataset.t; showTab(); });
+}
+
+// ---------- variants editor ----------
+const parseOpts = (txt) => txt.split('\n').map(l => { const i = l.indexOf(':'); return i < 0 ? null : { name: l.slice(0, i).trim(), values: [...new Set(l.slice(i + 1).split(',').map(x => x.trim().replace(/\|/g, '/')).filter(Boolean))] }; }).filter(o => o && o.name && o.values.length).slice(0, 3);
+const combos = (opts) => opts.reduce((acc, o) => acc.flatMap(a => o.values.map(v => a.concat([v]))), [[]]).slice(0, 150);
+function vRows(box, items) {
+  box.querySelector('.vrows').innerHTML = items.length ? `<div class="grid grid-cols-12 gap-1 text-[10px] text-gray-400 mb-1"><span class="col-span-4">Combination</span><span class="col-span-2">Price (blank = base)</span><span class="col-span-2">Stock</span><span class="col-span-1">Sold</span><span class="col-span-3">Image URL</span></div>` +
+    items.map(it => `<div class="vr grid grid-cols-12 gap-1 mb-1 items-center" data-key="${esc(it.key)}"><span class="col-span-4 text-sm">${esc(it.key.replace(/\|/g, ' / '))}</span>
+    <input class="${C} col-span-2" data-vp type="number" step="0.01" value="${it.price}"><input class="${C} col-span-2" data-vq type="number" min="0" value="${it.qty}"><span class="col-span-1 text-sm">${it.sold || 0}</span><input class="${C} col-span-3" data-vi value="${esc(it.image || '')}"></div>`).join('') : '';
+}
+function vSync(box) {
+  const options = parseOpts(box.querySelector('[data-vopts]').value);
+  const items = [...box.querySelectorAll('.vr')].map(r => ({ key: r.dataset.key, price: r.querySelector('[data-vp]').value, qty: r.querySelector('[data-vq]').value, image: r.querySelector('[data-vi]').value.trim() }));
+  const h = box.querySelector('[data-f=variants]'); h.value = JSON.stringify({ options, items }); h.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function products() {
   $('pane-products').innerHTML = `<div class="bg-white p-3 rounded-xl mb-3 flex flex-wrap gap-2 items-center">
     <button id="newp" class="bg-black text-white px-3 py-1 rounded text-sm font-bold">+ New product</button>
     <input id="impu" class="${C} flex-1 min-w-[200px]" placeholder="Import from a product link (works on your phone)"><button id="imp" class="bg-gray-200 px-3 py-1 rounded text-sm font-bold">Import</button></div>
-    <p class="text-xs text-gray-500 mb-2">New products start as <b>draft</b>. "Record offline sale" is only for real sales made outside the site: it moves stock to sold. Online sales update automatically.</p>` +
+    <p class="text-xs text-gray-500 mb-2">New products start as <b>draft</b>. Variants (size, colour...) have their own price, stock and image. "Record offline sale" is only for real sales outside the site (products without variants).</p>` +
   D.products.map(p => `<div class="bg-white rounded-xl p-3 mb-3 grid md:grid-cols-12 gap-2 items-end" data-pid="${esc(p.id)}">
     <img src="${esc(p.images[0] || PLACEHOLDER)}" referrerpolicy="no-referrer" class="w-16 h-16 object-contain md:col-span-1">
     <label class="md:col-span-4 text-xs font-bold">Title<input class="${C}" data-f="title" value="${esc(p.title)}"></label>
-    <label class="md:col-span-1 text-xs font-bold">Price<input class="${C}" data-f="price" type="number" step="0.01" value="${p.price}"></label>
-    <label class="md:col-span-1 text-xs font-bold">Stock<input class="${C}" data-f="qty" type="number" min="0" value="${p.qty}"></label>
+    <label class="md:col-span-1 text-xs font-bold">Base price<input class="${C}" data-f="price" type="number" step="0.01" value="${p.basePrice}"></label>
+    <label class="md:col-span-1 text-xs font-bold">Stock${p.variants ? ' (see variants)' : ''}<input class="${C}" data-f="qty" type="number" min="0" value="${p.variants ? 0 : p.qty}" ${p.variants ? 'disabled' : ''}></label>
     <div class="md:col-span-1 text-xs font-bold">Sold<div class="p-1 text-sm">${p.sold}</div></div>
-    <label class="md:col-span-2 text-xs font-bold">Record offline sale<input class="${C}" data-f="offline" type="number" min="0" placeholder="0"></label>
+    <label class="md:col-span-2 text-xs font-bold">Record offline sale<input class="${C}" data-f="offline" type="number" min="0" placeholder="0" ${p.variants ? 'disabled' : ''}></label>
     <label class="md:col-span-2 text-xs font-bold">Status<select class="${C}" data-f="status">${opt(p.status, ['draft', 'live', 'upcoming', 'archived'])}</select></label>
     <label class="md:col-span-2 text-xs font-bold">Type<select class="${C}" data-f="dealType">${opt(p.dealType, ['daily', 'weekly', 'featured'])}</select></label>
     <label class="md:col-span-2 text-xs font-bold">Starts<input class="${C}" data-f="startsAt" type="date" value="${esc(p.startsAt.slice(0, 10))}"></label>
@@ -68,17 +82,30 @@ function products() {
     <label class="md:col-span-4 text-xs font-bold">Video link (YouTube or .mp4)<input class="${C}" data-f="videoUrl" value="${esc(p.videoUrl)}"></label>
     <label class="md:col-span-6 text-xs font-bold">Description (HTML ok)<textarea class="${C}" rows="3" data-f="description">${esc(p.description)}</textarea></label>
     <label class="md:col-span-6 text-xs font-bold">Image links (one per line, first = cover)<textarea class="${C}" rows="3" data-f="images">${esc(p.images.join('\n'))}</textarea></label>
-    <label class="md:col-span-12 text-xs font-bold">Add photo from this device <input type="file" accept="image/*" class="upl text-xs"></label>
+    <div class="vbox md:col-span-12 border rounded-lg p-2 bg-gray-50"><div class="text-xs font-bold mb-1">Variants. One line per option, e.g. <code>Color: Red, Blue</code> then <code>Size: S, M, L</code></div>
+      <textarea class="${C}" rows="2" data-vopts></textarea><button type="button" class="genv bg-gray-200 px-3 py-1 rounded text-xs font-bold my-2">Build / update rows</button>
+      <div class="vrows"></div><input type="hidden" data-f="variants"></div>
+    <label class="md:col-span-6 text-xs font-bold">Add photo from this device <input type="file" accept="image/*" class="upl text-xs"></label>
+    <label class="md:col-span-6 text-xs font-bold text-red-600">Delete this product <input type="checkbox" class="del" data-f="_del"></label>
   </div>`).join('');
-  $('newp').onclick = async () => { try { await call('createProduct'); say('Product created (draft).'); $('pane-products').dataset.built = 'stale'; load(); } catch (e) { say(e.message, 1); } };
-  $('imp').onclick = async () => { const u = $('impu').value.trim(); if (!u) return; say('Importing, can take up to 30s...'); try { const r = await call('importUrl', { url: u }); say('Imported as draft with ' + r.images.length + ' image(s).'); $('pane-products').dataset.built = 'stale'; load(); } catch (e) { say(e.message, 1); } };
+  D.products.forEach(p => { const box = document.querySelector(`[data-pid="${CSS.escape(p.id)}"] .vbox`);
+    box.querySelector('[data-vopts]').value = p.variants ? p.variants.options.map(o => o.name + ': ' + o.values.join(', ')).join('\n') : '';
+    vRows(box, p.variants ? p.variants.items : []);
+    box.querySelector('[data-f=variants]').value = p.variants ? JSON.stringify({ options: p.variants.options, items: p.variants.items }) : ''; });
+  document.querySelectorAll('.genv').forEach(b => b.onclick = () => {
+    const box = b.closest('.vbox'), opts = parseOpts(box.querySelector('[data-vopts]').value), old = {};
+    box.querySelectorAll('.vr').forEach(r => old[r.dataset.key] = { price: r.querySelector('[data-vp]').value, qty: r.querySelector('[data-vq]').value, image: r.querySelector('[data-vi]').value, sold: r.children[3].textContent });
+    vRows(box, opts.length ? combos(opts).map(v => { const k = v.join('|'), o = old[k] || {}; return { key: k, price: o.price || '', qty: o.qty || 0, sold: o.sold || 0, image: o.image || '' }; }) : []);
+    vSync(box); });
+  document.querySelectorAll('.del').forEach(c => c.onchange = () => { if (c.checked && !confirm('Delete this product when you press Save?')) c.checked = false; });
+  $('newp').onclick = async () => { try { await call('createProduct'); say('Product created (draft).'); load(); } catch (e) { say(e.message, 1); } };
+  $('imp').onclick = async () => { const u = $('impu').value.trim(); if (!u) return; say('Importing, can take up to 30s...'); try { const r = await call('importUrl', { url: u }); say('Imported as draft with ' + r.images.length + ' image(s).'); load(); } catch (e) { say(e.message, 1); } };
   document.querySelectorAll('.upl').forEach(f => f.onchange = async () => {
     if (!f.files[0]) return; say('Uploading photo...');
     try { const r = await call('uploadImage', { data: await shrink(f.files[0]) }); const ta = f.closest('[data-pid]').querySelector('[data-f=images]'); ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + r.url; ta.dispatchEvent(new Event('input', { bubbles: true })); say('Photo added. Press Save.'); }
-    catch (e) { say(e.message, 1); }
-  });
+    catch (e) { say(e.message, 1); } });
 }
-function shrink(file) { return new Promise(res => { const im = new Image(); im.onload = () => { const s = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = im.width * s; c.height = im.height * s; c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .85).split(',')[1]); }; im.src = URL.createObjectURL(file); }); }
+function shrink(file) { return new Promise(res => { const im = new Image(); im.onload = () => { const s = Math.min(1, 2000 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = im.width * s; c.height = im.height * s; c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .9).split(',')[1]); }; im.src = URL.createObjectURL(file); }); }
 
 function reviews() {
   const po = D.products.map(p => `<option value="${esc(p.id)}">${esc(p.title.slice(0, 60))}</option>`).join('');
@@ -87,36 +114,75 @@ function reviews() {
     <div class="grid md:grid-cols-6 gap-2"><select id="np" class="${C} md:col-span-2">${po}</select><input id="nn" class="${C}" placeholder="Customer name"><input id="no" class="${C}" placeholder="Order ref / email"><select id="ns" class="${C}"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
     <textarea id="nt" class="${C} md:col-span-6" placeholder="Their words (saved with the main Save button)"></textarea></div></div>` +
   D.reviews.map(r => `<div class="bg-white rounded-xl p-3 mb-2" data-rid="${esc(r.id)}"><div>${stars(r.stars)} <b>${esc(r.name)}</b> <span class="text-xs text-gray-400">${esc(r.email || r.orderRef)}</span></div>
-    <p class="text-sm my-1">${esc(r.text)}</p><div class="grid grid-cols-3 gap-2"><select class="${C}" data-f="status">${opt(r.status, ['shown', 'hidden', 'pending'])}</select><input class="${C} col-span-2" data-f="reply" placeholder="Seller reply" value="${esc(r.reply)}"></div></div>`).join('');
+    <p class="text-sm my-1">${esc(r.text)}</p><div class="grid grid-cols-4 gap-2 items-center"><select class="${C}" data-f="status">${opt(r.status, ['shown', 'hidden', 'pending'])}</select><input class="${C} col-span-2" data-f="reply" placeholder="Seller reply" value="${esc(r.reply)}"><label class="text-xs text-red-600">Delete <input type="checkbox" data-f="_del"></label></div></div>`).join('');
 }
 
-const OPTS = { font_body: FONTS, font_heading: FONTS, heading_weight: ['400', '700'], heading_style: ['normal', 'italic'], heading_transform: ['none', 'uppercase', 'capitalize'] };
+// ---------- settings ----------
+const OPTS = { font_body: FONTS, font_heading: FONTS, heading_weight: ['400', '700'], heading_style: ['normal', 'italic'], heading_transform: ['none', 'uppercase', 'capitalize'], review_mode: ['moderate', 'auto'], grid_cols: ['2', '3', '4'] };
+const GROUPS = {
+  'Brand & colours': ['site_name', 'logo_url', 'primary_color', 'accent_color', 'price_color', 'text_color', 'bg_color', 'nav_bg', 'footer_bg', 'card_radius', 'button_radius'],
+  'Fonts': ['font_body', 'font_heading', 'heading_weight', 'heading_style', 'heading_transform', 'font_scale'],
+  'Homepage': ['hero_on', 'hero_title', 'hero_sub', 'hero_image_url', 'grid_cols', 'title_live', 'title_upcoming', 'title_past', 'badge_daily', 'badge_weekly', 'view_label', 'buy_label', 'preorder_label'],
+  'Promo banner': ['banner_on', 'banner_text', 'banner_color'],
+  'Features': ['reviews_on', 'review_mode', 'stock_bar_on', 'stock_bar_color', 'stock_low_at'],
+  'Store': ['site_url', 'business_name', 'contact_email', 'ship_days', 'return_days', 'google_client_id'],
+  'Footer': ['footer_on', 'footer_text']
+};
+function field(k, v) {
+  if (OPTS[k]) return `<select data-k="${k}" class="${C}">${opt(v, OPTS[k])}</select>`;
+  if (k.endsWith('_color') || k.endsWith('_bg')) return `<input type="color" data-k="${k}" value="${esc(v)}">`;
+  if (v === 'true' || v === 'false') return `<input type="checkbox" data-k="${k}" ${v === 'true' ? 'checked' : ''}>`;
+  if (k === 'font_scale') return `<input type="number" step="0.05" min="0.7" max="1.6" data-k="${k}" class="${C}" value="${esc(v)}">`;
+  return `<input data-k="${k}" class="${C}" value="${esc(v)}">`;
+}
+function fpRows(pages) {
+  $('fp').innerHTML = pages.map((p, i) => `<div class="fp border rounded-lg p-2 mb-2 bg-gray-50"><div class="flex gap-2 mb-1"><input class="${C}" data-ft placeholder="Link title" value="${esc(p.title)}"><button type="button" class="fpd text-red-600 text-sm px-2">Remove</button></div>
+    <textarea class="${C}" rows="4" data-fb placeholder="Text (new line = new paragraph)">${esc(p.body)}</textarea></div>`).join('');
+  $('fp').querySelectorAll('.fpd').forEach(b => b.onclick = () => { b.closest('.fp').remove(); fpSync(); });
+}
+function fpSync() {
+  const pages = [...document.querySelectorAll('.fp')].map(d => ({ title: d.querySelector('[data-ft]').value, body: d.querySelector('[data-fb]').value })).filter(p => p.title.trim());
+  const h = document.querySelector('[data-k=footer_pages]'); h.value = JSON.stringify(pages); settingsDirty = true;
+}
 function settings() {
-  $('pane-settings').innerHTML = `<div class="bg-white rounded-xl p-4 grid md:grid-cols-3 gap-3">` + Object.keys(D.settings).map(k => {
-    const v = D.settings[k]; let f;
-    if (OPTS[k]) f = `<select data-k="${k}" class="${C}">${opt(v, OPTS[k])}</select>`;
-    else if (k.endsWith('_color')) f = `<input type="color" data-k="${k}" value="${esc(v)}">`;
-    else if (v === 'true' || v === 'false') f = `<input type="checkbox" data-k="${k}" ${v === 'true' ? 'checked' : ''}>`;
-    else if (k === 'font_scale') f = `<input type="number" step="0.05" min="0.7" max="1.6" data-k="${k}" class="${C}" value="${esc(v)}">`;
-    else f = `<input data-k="${k}" class="${C}" value="${esc(v)}">`;
-    return `<label class="text-xs font-bold">${k.replace(/_/g, ' ')}<div>${f}</div></label>`; }).join('') + `</div>
-  <p class="text-xs text-gray-500 mt-2">font scale: 1 = normal, 1.15 = larger text. stock low at: bar turns red at or below this many left.</p>`;
+  $('pane-settings').innerHTML = Object.entries(GROUPS).map(([g, keys]) => `<div class="bg-white rounded-xl p-4 mb-3"><h3 class="font-bold mb-2">${g}</h3><div class="grid md:grid-cols-3 gap-3">` +
+    keys.filter(k => k in D.settings).map(k => `<label class="text-xs font-bold">${k.replace(/_/g, ' ')}<div>${field(k, D.settings[k])}</div></label>`).join('') + `</div>` +
+    (g === 'Footer' ? `<h4 class="font-bold text-sm mt-4 mb-1">Footer links (each opens as a popup)</h4><p class="text-xs text-gray-500 mb-2">You can use {business_name}, {contact_email}, {ship_days}, {return_days} in the text. Template wording only, have it reviewed before launch.</p>
+      <div id="fp"></div><button type="button" id="fpa" class="bg-gray-200 px-3 py-1 rounded text-sm font-bold">+ Add link</button><input type="hidden" data-k="footer_pages">` : '') + `</div>`).join('') +
+  `<div class="bg-white rounded-xl p-4 mb-3"><h3 class="font-bold mb-1">Private keys (write-only)</h3>
+    <p class="text-xs text-gray-500 mb-2">Stored in Apps Script's private properties, never in the Sheet and never shown again. Leave blank to keep the current value.</p>
+    <div class="grid md:grid-cols-3 gap-3">${[['STRIPE_SECRET_KEY', 'Stripe secret key (restricted key)'], ['IMGBB_API_KEY', 'ImgBB API key'], ['SECRET_KEY', 'New admin secret (12+ characters)']].map(([k, l]) =>
+      `<label class="text-xs font-bold">${l} ${D.keysSet[k] === true ? '✅ set' : D.keysSet[k] === false ? '⚠️ not set' : ''}<input type="password" autocomplete="new-password" data-key="${k}" class="${C}"></label>`).join('')}</div></div>`;
+  const pages = pagesFrom(D.settings); fpRows(pages);
+  document.querySelector('[data-k=footer_pages]').value = D.settings.footer_pages || '';
+  $('fpa').onclick = () => { const p = [...document.querySelectorAll('.fp')].map(d => ({ title: d.querySelector('[data-ft]').value, body: d.querySelector('[data-fb]').value })); p.push({ title: 'New link', body: '' }); fpRows(p); fpSync(); };
 }
 
 function orders() {
   const names = {}; D.products.forEach(p => names[p.id] = p.title);
   $('pane-orders').innerHTML = D.orders.length ? D.orders.map(o => `<div class="bg-white rounded-xl p-3 mb-2 text-sm" data-oid="${esc(o.id)}">
-    <div class="flex flex-wrap justify-between gap-2"><b>${esc((names[o.productId] || 'Product').slice(0, 70))}</b><span>${esc(o.createdAt.slice(0, 16).replace('T', ' '))} · qty ${o.qty} · ${money(o.amount)} · <b>${o.status}</b></span></div>
+    <div class="flex flex-wrap justify-between gap-2"><b>${esc((names[o.productId] || 'Product').slice(0, 70))}${o.variant ? ' (' + esc(o.variant) + ')' : ''}</b><span>${esc(o.createdAt.slice(0, 16).replace('T', ' '))} · qty ${o.qty} · ${money(o.amount)} · <b>${o.status}</b></span></div>
     <div class="text-gray-600 mt-1">${esc(o.name)} · ${esc(o.email)} · ${esc(o.phone)}</div><div class="text-gray-600">${esc(o.address)}</div><div class="text-gray-500 text-xs">Paid with: ${esc(o.payment || 'n/a')}</div>
     <div class="grid grid-cols-3 gap-2 mt-2"><select class="${C}" data-f="shipStatus">${opt(o.shipStatus, ['', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])}</select><input class="${C} col-span-2" data-f="tracking" placeholder="Tracking number" value="${esc(o.tracking)}"></div></div>`).join('') : '<p class="text-gray-500">No orders yet.</p>';
 }
 
-document.addEventListener('input', (e) => { const r = e.target.closest('[data-pid],[data-rid],[data-oid]'); if (r) r.dataset.dirty = 1; else if (e.target.closest('#pane-settings')) settingsDirty = true; });
-document.addEventListener('change', (e) => { const r = e.target.closest('[data-pid],[data-rid],[data-oid]'); if (r) r.dataset.dirty = 1; else if (e.target.closest('#pane-settings')) settingsDirty = true; });
+// ---------- dirty tracking + the single Save ----------
+const mark = (e) => {
+  const t = e.target, r = t.closest('[data-pid],[data-rid],[data-oid]');
+  if (r) r.dataset.dirty = 1; else if (t.closest('#pane-settings') && !t.dataset.key) settingsDirty = true;
+  if (t.matches('[data-vp],[data-vq],[data-vi],[data-vopts]')) vSync(t.closest('.vbox'));
+  if (t.matches('[data-ft],[data-fb]')) fpSync();
+};
+document.addEventListener('input', mark); document.addEventListener('change', mark);
 
 function collect(r) {
   const f = {};
-  r.querySelectorAll('[data-f]').forEach(el => { let v = el.type === 'checkbox' ? (el.checked ? 'TRUE' : 'FALSE') : el.value; if (el.dataset.f === 'images') v = v.split('\n').map(s => s.trim()).filter(Boolean); f[el.dataset.f] = v; });
+  r.querySelectorAll('[data-f]').forEach(el => {
+    if (el.disabled) return;
+    let v = el.type === 'checkbox' ? (el.checked ? 'TRUE' : 'FALSE') : el.value;
+    if (el.dataset.f === 'images') v = v.split('\n').map(s => s.trim()).filter(Boolean);
+    if (el.dataset.f === 'variants') { try { v = v ? JSON.parse(v) : { options: [], items: [] }; } catch (e) { v = { options: [], items: [] }; } }
+    f[el.dataset.f] = v; });
   return f;
 }
 $('save').onclick = async () => {
@@ -127,9 +193,13 @@ $('save').onclick = async () => {
     orders: q('[data-oid]').map(r => ({ id: r.dataset.oid, ...collect(r) }))
   };
   if (settingsDirty) { payload.settings = {}; document.querySelectorAll('#pane-settings [data-k]').forEach(el => payload.settings[el.dataset.k] = el.type === 'checkbox' ? String(el.checked) : el.value); }
+  const keys = {}; document.querySelectorAll('[data-key]').forEach(el => { if (el.value.trim()) keys[el.dataset.key] = el.value.trim(); });
+  if (Object.keys(keys).length) payload.keys = keys;
   if ($('nt') && $('nt').value.trim()) payload.newReview = { productId: $('np').value, name: $('nn').value, orderRef: $('no').value, stars: $('ns').value, text: $('nt').value };
   $('save').disabled = true; say('Saving...');
-  try { const r = await call('saveAll', payload); if (r.error) throw new Error(r.error); say('Saved.'); $('pane-products').dataset.built = 'stale'; await load(); }
+  try { const r = await call('saveAll', payload); if (r.error) throw new Error(r.error);
+    if (keys.SECRET_KEY) { K = keys.SECRET_KEY; sessionStorage.setItem('k', K); }
+    say('Saved.'); await load(); }
   catch (e) { say(e.message, 1); }
   $('save').disabled = false;
 };

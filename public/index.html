@@ -6,9 +6,10 @@
 <title>Deals</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="text-gray-800">
+<body>
 <div id="banner" style="display:none" class="text-white text-center text-sm font-bold py-2 px-4"></div>
-<nav class="bg-white shadow-sm p-5 mb-8"><div class="max-w-6xl mx-auto flex justify-between items-center"><a href="index.html" id="brand" class="text-3xl font-black"></a><div id="auth"></div></div></nav>
+<nav class="bg-white shadow-sm p-5"><div class="max-w-6xl mx-auto flex justify-between items-center"><a href="index.html" id="brand" class="text-3xl font-black"></a><div id="auth"></div></div></nav>
+<div id="hero"></div>
 <main class="max-w-6xl mx-auto px-6">
   <div id="loading" class="text-center text-gray-400 py-12">Loading deals...</div>
   <div id="sections"></div>
@@ -17,10 +18,10 @@
 <script>
 function card(p, S) {
   const ended = p.status === 'archived';
-  const label = ended ? 'Ended' : p.status === 'upcoming' ? 'Coming soon' : (p.dealType === 'weekly' ? 'Deal of the week' : p.dealType === 'daily' ? 'Deal of the day' : 'Deal');
+  const label = ended ? 'Ended' : p.status === 'upcoming' ? 'Coming soon' : (p.dealType === 'weekly' ? S.badge_weekly : p.dealType === 'daily' ? S.badge_daily : 'Deal');
   const href = 'product.html?id=' + encodeURIComponent(p.id);
   const plain = String(p.description || '').replace(/<[^>]*>?/gm, '').substring(0, 90);
-  return `<div class="card bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 flex flex-col relative ${ended ? 'opacity-60' : ''}">
+  return `<div class="card bg-white overflow-hidden shadow-sm border border-gray-100 flex flex-col relative ${ended ? 'opacity-60' : ''}">
     <span class="badge" ${ended ? 'style="background:#6b7280"' : ''}>${esc(label)}</span>
     ${carousel(p.images, href)}
     <div class="p-5 flex flex-col flex-grow">
@@ -28,19 +29,20 @@ function card(p, S) {
       ${on(S.reviews_on) && p.reviewCount ? `<div class="text-sm mb-1">${stars(p.rating)} <span class="text-gray-500">(${p.reviewCount})</span></div>` : ''}
       <p class="text-gray-500 text-sm mb-2 flex-grow">${esc(plain)}${plain ? '...' : ''}</p>
       ${p.status === 'live' && on(S.stock_bar_on) ? stockBar(p, S) : ''}
-      <div class="flex justify-between items-center mt-4"><span class="text-2xl font-black text-green-600">${money(p.price)}</span>
-      <a href="${href}" class="btn-p px-5 py-2 rounded-full text-sm font-bold">${ended ? 'View' : p.status === 'upcoming' ? 'Preview' : 'View Deal'}</a></div>
+      <div class="flex justify-between items-center mt-4"><span class="text-2xl font-black price">${p.priceFrom ? '<span class="text-sm font-semibold">From </span>' : ''}${money(p.price)}</span>
+      <a href="${href}" class="btn-p px-5 py-2 text-sm font-bold">${ended ? 'View' : p.status === 'upcoming' ? 'Preview' : esc(S.view_label)}</a></div>
     </div></div>`;
 }
 async function load() {
   const L = document.getElementById('loading');
   try {
     const d = await (await fetch(API)).json(); if (d.error) throw new Error(d.error);
-    applyTheme(d.settings); document.title = d.settings.site_name + ' | Deals'; initAuth(d.settings);
+    const S = d.settings; applyTheme(S); document.title = S.site_name + ' | Deals'; initAuth(S);
+    if (on(S.hero_on) && S.hero_title) document.getElementById('hero').innerHTML = `<div class="text-center text-white py-16 px-6 mb-4" style="background:${S.hero_image_url ? `linear-gradient(rgba(0,0,0,.5),rgba(0,0,0,.5)),url('${esc(S.hero_image_url)}') center/cover` : 'var(--p)'}"><h1 class="text-4xl md:text-5xl mb-3">${esc(S.hero_title)}</h1><p class="text-lg opacity-90">${esc(S.hero_sub)}</p></div>`;
     let html = '';
-    [["Today's Hottest Deals", 'live'], ['Upcoming Deals', 'upcoming'], ['Past Deals', 'archived']].forEach(([h, st]) => {
+    [[S.title_live, 'live'], [S.title_upcoming, 'upcoming'], [S.title_past, 'archived']].forEach(([h, st]) => {
       const list = d.products.filter(p => p.status === st);
-      if (list.length) html += `<h2 class="text-3xl mb-6 mt-10">${h}</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-8">${list.map(p => card(p, d.settings)).join('')}</div>`;
+      if (list.length) html += `<h2 class="text-3xl mb-6 mt-10">${esc(h)}</h2><div class="pgrid">${list.map(p => card(p, S)).join('')}</div>`;
     });
     L.classList.add('hidden');
     const box = document.getElementById('sections');

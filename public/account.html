@@ -27,7 +27,7 @@ async function showOrders() {
       const i = Math.max(0, STEPS.indexOf(o.shipStatus));
       return `<div class="bg-white rounded-xl border mb-4 overflow-hidden"><div class="bg-gray-50 px-5 py-3 text-xs text-gray-500 flex flex-wrap justify-between gap-2"><span>ORDER PLACED ${esc(o.date.slice(0, 10))}</span><span>TOTAL ${money(o.amount)}</span><span>ORDER # ${esc(o.id)}</span></div>
       <div class="p-5 flex gap-4"><a href="product.html?id=${encodeURIComponent(o.productId)}"><img src="${esc(o.image || PLACEHOLDER)}" referrerpolicy="no-referrer" class="w-24 h-24 object-contain bg-white border rounded"></a>
-        <div class="flex-1"><a href="product.html?id=${encodeURIComponent(o.productId)}" class="font-bold hover:underline">${esc(o.title)}</a><p class="text-sm text-gray-500">Qty ${o.qty}${o.payment ? ' · ' + esc(o.payment) : ''}</p>
+        <div class="flex-1"><a href="product.html?id=${encodeURIComponent(o.productId)}" class="font-bold hover:underline">${esc(o.title)}</a><p class="text-sm text-gray-500">${o.variant ? esc(o.variant) + ' · ' : ''}Qty ${o.qty}${o.payment ? ' · ' + esc(o.payment) : ''}</p>
         ${o.address ? `<p class="text-xs text-gray-500 mt-1">Ship to: ${esc(o.address)}</p>` : ''}
         <div class="flex items-center gap-2 mt-3 text-xs font-bold">${STEPS.map((s, k) => `<span class="px-2 py-1 rounded-full ${k <= i ? 'text-white' : 'bg-gray-200 text-gray-500'}" ${k <= i ? 'style="background:var(--a)"' : ''}>${s}</span>`).join('<span class="text-gray-300">—</span>')}</div>
         ${o.tracking ? `<p class="text-sm mt-2">Tracking: <b>${esc(o.tracking)}</b></p>` : ''}</div></div></div>`; }).join('') : 'No orders yet.';

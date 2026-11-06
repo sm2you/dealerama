@@ -65,20 +65,34 @@ function renderVariants(v) {
   toggle.disabled = false;
   toggle.checked = true;
 
-  const opts = (v.options || [])
-    .map((o) => `<div class="opt"><b>${escapeHtml(o.name)}:</b> ${escapeHtml((o.values || []).join(', '))}</div>`)
+  const options = v.options || [];
+  const chips = (values) => {
+    const list = values.map((x) => `<span class="chip">${escapeHtml(x)}</span>`);
+    const shown = list.slice(0, 12).join('');
+    return shown + (list.length > 12 ? `<span class="hint">+${list.length - 12} more</span>` : '');
+  };
+  const opts = options
+    .map((o) => `<div class="opt"><b>${escapeHtml(o.name)}</b> ${chips((o.values || []).map(String))}</div>`)
     .join('');
 
+  // Sanity check: option values should be short words, not sentences or SKUs.
+  const suspicious = options.some((o) => (o.values || []).some((x) => String(x).length > 40))
+    || v.items.some((it) => String(it.key).length > 60);
+
   const preview = v.items.slice(0, 8).map((it) => {
+    const key = String(it.key).replace(/\|/g, ' / ');
     const price = it.price != null && it.price !== '' ? '$' + Number(it.price).toFixed(2) : 'base';
-    return `<tr><td>${escapeHtml(String(it.key).replace(/\|/g, ' / '))}</td><td>${price}</td><td>${it.qty}</td></tr>`;
+    return `<tr><td title="${escapeHtml(key)}">${escapeHtml(key.length > 46 ? key.slice(0, 46) + '…' : key)}</td><td>${price}</td><td>${it.qty}</td></tr>`;
   }).join('');
 
   box.innerHTML =
     opts +
     `<div class="opt" style="margin-top:8px"><b>${v.items.length}</b> combinations <span class="src">${escapeHtml(v.source || 'auto')}</span></div>` +
+    (suspicious
+      ? '<div class="warnline">Some option values are very long (whole titles or SKUs). Rescrape the page, or fix the options in Admin → Products before publishing.</div>'
+      : '') +
     `<table id="variantTable"><tr><th>Combination</th><th>Price</th><th>Stock</th></tr>${preview}</table>` +
-    (v.items.length > 8 ? `<div class="hint">Showing 8 of ${v.items.length}. Edit all of them after publishing, in the admin dashboard.</div>` : '');
+    (v.items.length > 8 ? `<div class="hint">Showing 8 of ${v.items.length}. All of them can be edited in Admin → Products → Variants.</div>` : '');
 }
 
 /* ------------------------------------------------------------------ *

@@ -82,12 +82,28 @@ for (const ref of manifestRefs) {
 /* 5. admin.html: every $('id') must exist in the markup or be generated at runtime. */
 const adminHtml = readFileSync(join(root, 'public', 'admin.html'), 'utf8');
 const ids = new Set([...adminHtml.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
-const generated = new Set(['newp', 'imp', 'impu', 'fp', 'fpa', 'gbtn', 'pgm', 'pgx', 'pgt', 'pgb']);
+const generated = new Set([
+  'newp', 'imp', 'impu', 'search', 'filters', 'emptyProducts',
+  'fp', 'fpa', 'np', 'nn', 'no', 'ns', 'nt',
+  'gbtn', 'pgm', 'pgx', 'pgt', 'pgb'
+]);
 for (const m of adminHtml.matchAll(/\$\('([^']+)'\)/g)) {
   const id = m[1];
   if (!ids.has(id) && !generated.has(id)) {
     problems.push('admin.html uses #' + id + ' but never defines it');
   }
+}
+
+/* 5b. Regression: variant rows used data-key, which the Save handler also
+ * scanned for private keys, producing "reading 'trim' of undefined". */
+if (/data-key/.test(adminHtml)) {
+  problems.push('admin.html still uses data-key — variant rows must use data-vkey and secrets data-secret');
+}
+if (!/data-vkey/.test(adminHtml)) {
+  problems.push('admin.html does not render data-vkey on variant rows');
+}
+if (!/data-secret/.test(adminHtml)) {
+  problems.push('admin.html does not render data-secret on private-key inputs');
 }
 
 /* 6. The storefront must go through getData(), never fetch(API) directly. */
@@ -108,6 +124,15 @@ if (/method\s*!==\s*'POST'[\s\S]{0,80}405/.test(apiSrc)) {
 }
 if (!/Access-Control-Allow-Origin/.test(apiSrc)) {
   problems.push('api.js is missing CORS headers (the extension needs them)');
+}
+if (/export const config\s*=/.test(apiSrc)) {
+  problems.push('api.js declares config.path, which replaces /.netlify/functions/api and breaks /api');
+}
+
+/* 8. Regression: JSON-LD variants must not use sku / the full product name. */
+const popupSrc = readFileSync(join(root, 'extension', 'popup.js'), 'utf8');
+if (/\[v\.name,\s*v\.color,\s*v\.size,\s*v\.sku\]/.test(popupSrc)) {
+  problems.push('popup.js still builds variant keys from name+sku (whole product titles as options)');
 }
 
 /* ------------------------------------------------------------------ */

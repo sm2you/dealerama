@@ -310,6 +310,80 @@ await test('pickVariants de-duplicates and caps keys', () => {
   assert.equal(items[1].price, null, 'an empty variant price falls back to the base price');
 });
 
+/* ================================================================== *
+ * JSON-LD hasVariant (Costco-style) — the case from the screenshot
+ * ================================================================== */
+const TITLE = "Caterpillar Men's Cotton-Blend Fulton Hoodie";
+
+await test('JSON-LD variants with only a name are split into Color/Size, never SKUs', async () => {
+  const jsonld = {
+    '@type': 'Product',
+    name: TITLE,
+    hasVariant: [
+      { '@type': 'Product', name: TITLE + ', Black, Small', sku: '2061919', offers: { '@type': 'Offer', price: '31.99' } },
+      { '@type': 'Product', name: TITLE + ', Navy, Medium', sku: '2061920', offers: { '@type': 'Offer', price: '31.99' } },
+      { '@type': 'Product', name: TITLE + ', Green, Large', sku: '2061921', offers: { '@type': 'Offer', price: '32.99' } }
+    ]
+  };
+  const script = { textContent: JSON.stringify(jsonld) };
+  const ctx = loadExtractor({
+    dom: { 'script[type="application/ld+json"]': [script] }
+  });
+
+  const res = await ctx.extractVariants();
+  assert.ok(res, 'variants must be found');
+  assert.equal(res.source, 'json-ld');
+
+  const options = JSON.parse(JSON.stringify(res.options));
+  assert.deepEqual(options.map((o) => o.name), ['Color', 'Size'], 'option names come from the values, not "Option 1"');
+  assert.deepEqual(options[0].values, ['Black', 'Navy', 'Green']);
+  assert.deepEqual(options[1].values, ['Small', 'Medium', 'Large']);
+
+  const items = JSON.parse(JSON.stringify(res.items));
+  assert.deepEqual(items.map((i) => i.key), ['Black|Small', 'Navy|Medium', 'Green|Large']);
+  assert.equal(items[0].price, 31.99);
+  assert.equal(items[2].price, 32.99);
+  assert.ok(!JSON.stringify(res).includes('2061919'), 'SKUs must never become option values');
+  assert.ok(!items.some((i) => i.key.includes('Caterpillar')), 'the product title must never become an option value');
+});
+
+await test('JSON-LD variants prefer explicit color/size fields', async () => {
+  const jsonld = {
+    '@type': 'Product',
+    name: TITLE,
+    hasVariant: [
+      { '@type': 'Product', name: TITLE, color: 'Black', size: 'S', sku: '111', offers: { price: '31.99' } },
+      { '@type': 'Product', name: TITLE, color: 'Bronze', size: 'XL', sku: '222', offers: { price: '33.5' } }
+    ]
+  };
+  const ctx = loadExtractor({
+    dom: { 'script[type="application/ld+json"]': [{ textContent: JSON.stringify(jsonld) }] }
+  });
+
+  const res = await ctx.extractVariants();
+  assert.ok(res);
+  const options = JSON.parse(JSON.stringify(res.options));
+  assert.deepEqual(options.map((o) => o.name), ['Color', 'Size']);
+  assert.deepEqual(options[0].values, ['Black', 'Bronze']);
+  assert.deepEqual(JSON.parse(JSON.stringify(res.items)).map((i) => i.key), ['Black|S', 'Bronze|XL']);
+});
+
+await test('JSON-LD variant values that are long sentences are rejected', async () => {
+  const jsonld = {
+    '@type': 'Product',
+    name: 'Widget',
+    hasVariant: [
+      { name: 'Widget, This is a very long marketing sentence that should never be an option value', offers: { price: 9.99 } },
+      { name: 'Widget, Another extremely long blurb that is clearly not a size or a colour', offers: { price: 9.99 } }
+    ]
+  };
+  const ctx = loadExtractor({
+    dom: { 'script[type="application/ld+json"]': [{ textContent: JSON.stringify(jsonld) }] }
+  });
+  const res = await ctx.extractVariants();
+  assert.equal(res, null, 'no usable variant dimensions should mean "no variants", not garbage rows');
+});
+
 /* ------------------------------------------------------------------ */
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');
 if (failures.length) {

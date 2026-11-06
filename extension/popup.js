@@ -179,19 +179,21 @@ async function runScrapeInPage() {
   const cleanImage = (raw) => {
     let u = norm(raw);
     if (!u) return '';
-    if (!/\.(jpe?g|png|webp)(\?|#|$)/i.test(u) && !/media-amazon|shopify|imgbb|cloudinary|bigcommerce|wixstatic/i.test(u)) return '';
+    if (!/\.(jpe?g|png|webp|avif)(\?|#|$)/i.test(u) && !/media-amazon|shopify|imgbb|cloudinary|bigcommerce|wixstatic|gdx-assets/i.test(u)) return '';
     if (isAmazon) {
       u = u.split('?')[0].split('#')[0];
-      u = u.replace(/\._[A-Za-z0-9_,%\-]+_?\.(jpe?g|png|webp)$/i, '.$1');
+      u = u.replace(/\._[A-Za-z0-9_,%\-]+_?\.(jpe?g|png|webp|avif)$/i, '.$1');
     } else {
       if (/shopify/i.test(u)) {
         u = u
-          .replace(/_\d+x\d*(?=\.(?:jpe?g|png|webp))/i, '')
-          .replace(/_(?:pico|icon|thumb|small|compact|medium|large|grande|\d+x\d*)(?=\.(?:jpe?g|png|webp))/i, '');
+          .replace(/_\d+x\d*(?=\.(?:jpe?g|png|webp|avif))/i, '')
+          .replace(/_(?:pico|icon|thumb|small|compact|medium|large|grande|\d+x\d*)(?=\.(?:jpe?g|png|webp|avif))/i, '');
       }
       u = u.replace(/#.*$/, '');
       u = u.replace(/([?&])(w|width|h|height|q|quality|fit|resize|size|sw|sh|ow|oh)=[^&]*/gi, '$1');
       u = u.replace(/[?&]+$/, '').replace(/\?&/, '?');
+      // WordPress/Woo thumbnail suffix: product-300x300.jpg -> product.jpg
+      u = u.replace(/-\d{2,4}x\d{2,4}(?=\.(?:jpe?g|png|webp|avif))/i, '');
     }
     return u;
   };
@@ -345,6 +347,20 @@ async function runScrapeInPage() {
     candidates.push(u);
   };
 
+  // Everything that is clearly chrome, not merchandise.
+  const BAD_URL = /sprite|placeholder|grey-pixel|gray-pixel|transparent-pixel|no-?image|image-?not-?available|coming-?soon|favicon|\/icon|logo|badge|star|rating|swatch|banner-ad|loading|spinner|pixel\.(gif|png)|facebook\.com|fbcdn|instagram\.com|cdninstagram|twimg|twitter\.com|pinimg|pinterest|linkedin|ytimg|tiktok/i;
+  const BAD_HINT = /social|facebook|instagram|twitter|pinterest|linkedin|youtube|tiktok|avatar|logo|icon|sprite|badge|placeholder|no image/i;
+  const CHROME = 'footer,header,nav,aside,[role="banner"],[role="contentinfo"],[role="navigation"]';
+
+  const usable = (img) => {
+    if (img.closest && img.closest(CHROME)) return false;
+    const hint = [img.getAttribute('alt'), img.getAttribute('title'), img.className, img.id].join(' ');
+    if (BAD_HINT.test(hint)) return false;
+    // Real product shots render large; tiny thumbnails only matter for their srcset.
+    if (img.naturalWidth && img.naturalWidth < 120) return false;
+    return true;
+  };
+
   if (isAmazon) {
     const dynEl = document.querySelector('#landingImage, #imgBlkFront, #main-image');
     const dyn = dynEl && dynEl.getAttribute('data-a-dynamic-image');
@@ -363,12 +379,34 @@ async function runScrapeInPage() {
     });
   }
 
+  // Product-gallery containers first: they are the best signal for relevance.
+  const gallerySelectors = [
+    '[itemprop="image"]',
+    '.product-gallery img, .product__media img, .product-images img, .product-image img',
+    '.woocommerce-product-gallery img, .flex-viewport img',
+    '[data-testid*="gallery" i] img, [class*="gallery" i] img, [class*="carousel" i] img',
+    '[class*="product" i] img'
+  ];
+  gallerySelectors.forEach((sel) => {
+    let nodes = [];
+    try { nodes = document.querySelectorAll(sel); } catch (e) { /* bad selector */ }
+    nodes.forEach((img) => {
+      if (!usable(img)) return;
+      add(img.getAttribute('data-zoom-image'));
+      add(img.getAttribute('data-large_image'));
+      add(img.getAttribute('data-large'));
+      add(img.getAttribute('data-zoom'));
+      add(img.getAttribute('data-old-hires'));
+      add(img.currentSrc || img.src);
+    });
+  });
+
   add(meta('meta[property="og:image"]'));
   add(meta('meta[property="og:image:secure_url"]'));
   jsonLdImages.forEach(add);
 
   Array.from(document.images).forEach((img) => {
-    if (img.naturalWidth && img.naturalWidth < 120) return;
+    if (!usable(img)) return;
     add(img.getAttribute('data-zoom-image'));
     add(img.getAttribute('data-large_image'));
     add(img.getAttribute('data-large'));
@@ -385,8 +423,16 @@ async function runScrapeInPage() {
     add(img.currentSrc || img.src);
   });
 
-  const BAD = /sprite|placeholder|grey-pixel|transparent-pixel|\/icon|favicon|logo|badge|star|rating|swatch|banner-ad|loading|spinner|pixel\.(gif|png)/i;
-  const images = candidates.filter((u) => !BAD.test(u)).slice(0, 20);
+  let images = candidates.filter((u) => !BAD_URL.test(u));
+  // Keep the cover (usually og:image / first gallery shot) and de-duplicate by
+  // path so the same file at two sizes only appears once.
+  const seenPaths = {};
+  images = images.filter((u) => {
+    const path = u.replace(/[?#].*$/, '');
+    if (seenPaths[path]) return false;
+    seenPaths[path] = 1;
+    return true;
+  }).slice(0, 20);
 
   return {
     title: title || '',
@@ -752,34 +798,85 @@ async function extractVariants() {
     }
   } catch (e) { /* ignore */ }
 
-  /* ---------------- 7. JSON-LD hasVariant / offers --------------- */
+  /* ---------------- 7. JSON-LD hasVariant / offers --------------- *
+   * IMPORTANT: never use `sku` or the full product `name` as an option value.
+   * Costco (and many others) expose hasVariant entries whose name is the whole
+   * title plus ", Black, Small" — using it produced 24 "options" that were
+   * entire product titles. Structured color/size win; otherwise the name is
+   * stripped of the product title and split into short parts, each classified
+   * as Color / Size / Option N.
+   * ---------------------------------------------------------------- */
   try {
+    const COLOR = /^(black|white|navy|blue|red|green|grey|gray|brown|tan|beige|pink|purple|yellow|orange|olive|khaki|burgundy|teal|cream|ivory|charcoal|heather|multi|silver|gold|bronze|ice|sand|stone|mocha|camel|wine|rose|mint|coral|peach|plum|mustard|aqua|turquoise|clear|natural|off[\s-]?white)$/i;
+    const SIZE = /^(xxs|xs|s|m|l|xl|xxl|xxxl|[2-5]xl|one\s?size|os|small|medium|large|x-?large|xx-?large|xxx-?large|\d{1,2}(\.\d)?)$/i;
+
     document.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
       if (R.items.length > 1) return;
       let parsed;
       try { parsed = JSON.parse(s.textContent); } catch (e) { return; }
       const nodes = Array.isArray(parsed) ? parsed : parsed['@graph'] || [parsed];
+
       nodes.forEach((node) => {
         if (!node) return;
-        const variants = [].concat(node.hasVariant || []);
-        const offers = [].concat(node.offers || []);
-        const list = variants.length > 1 ? variants : offers.length > 1 ? offers : [];
+        const variantList = [].concat(node.hasVariant || []);
+        const offerList = [].concat(node.offers || []);
+        const useOffers = variantList.length < 2 && offerList.length > 1;
+        const list = variantList.length > 1 ? variantList : useOffers ? offerList : [];
         if (list.length < 2) return;
-        const names = [];
+
+        const productName = val(node.name).toLowerCase();
+        const dimNames = [];
         const perIndex = [];
-        R.items = [];
+        const items = [];
+
         list.forEach((v) => {
-          const parts = [v.name, v.color, v.size, v.sku].map(val).filter((x) => x && !isDefault(x));
-          const key = parts.length ? parts.slice(0, 2).join('|') : val(v.name || v.sku);
-          if (!key) return;
-          const price = v.offers ? [].concat(v.offers)[0] : v;
-          addItem(key, money(price && (price.price || price.lowPrice)), v.inventoryLevel != null ? v.inventoryLevel : 10, v.image);
+          if (!v || typeof v !== 'object') return;
+
+          const dims = [];
+          const push = (name, value) => {
+            const clean = val(value).replace(/[|]/g, '/');
+            if (!clean || clean.length > 40 || isDefault(clean)) return;
+            if (dims.some((d) => d.name === name && d.value.toLowerCase() === clean.toLowerCase())) return;
+            dims.push({ name, value: clean });
+          };
+
+          push('Color', v.color);
+          push('Size', v.size);
+          if (!dims.length) push('Material', v.material);
+          if (!dims.length && v.pattern) push('Pattern', v.pattern);
+
+          if (!dims.length) {
+            let rest = val(v.name);
+            if (productName && rest.toLowerCase().indexOf(productName) === 0) rest = rest.slice(productName.length);
+            rest = rest.replace(/^[\s,\-–—:/]+/, '').trim();
+            rest.split(/[,/|]/).map((x) => val(x)).filter((x) => x && x.length <= 24 && !isDefault(x)).slice(0, 3).forEach((part) => {
+              const kind = COLOR.test(part) ? 'Color' : SIZE.test(part) ? 'Size' : 'Option ' + (dims.length + 1);
+              push(kind, part);
+            });
+          }
+          if (!dims.length) return;
+
+          dims.forEach((d, i) => {
+            if (!dimNames[i]) dimNames[i] = d.name;
+            if (!perIndex[i]) perIndex[i] = [];
+            if (perIndex[i].indexOf(d.value) < 0) perIndex[i].push(d.value);
+          });
+
+          const offer = [].concat(v.offers || [])[0] || {};
+          const priceRaw = offer.price != null ? offer.price : offer.lowPrice != null ? offer.lowPrice : v.price;
+          const img = Array.isArray(v.image) ? v.image[0] : v.image;
+          items.push({
+            key: dims.map((d) => d.value).join('|'),
+            price: money(priceRaw),
+            qty: v.inventoryLevel != null ? v.inventoryLevel : (v.availability && /OutOfStock/i.test(String(v.availability)) ? 0 : 10),
+            image: img && typeof img === 'object' ? img.url || img.contentUrl : img
+          });
         });
-        if (R.items.length > 1) {
-          const width = R.items[0].key.split('|').length;
-          for (let i = 0; i < width; i++) { names.push('Option ' + (i + 1)); perIndex.push([]); }
-          R.items.forEach((it) => it.key.split('|').forEach((p, i) => { if (perIndex[i] && perIndex[i].indexOf(p) < 0) perIndex[i].push(p); }));
-          setOptions(names, perIndex);
+
+        if (items.length > 1) {
+          R.items = [];
+          items.forEach((it) => addItem(it.key, it.price, it.qty, it.image));
+          setOptions(dimNames, perIndex);
         }
       });
     });

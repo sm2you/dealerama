@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Policies</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="text-gray-800">
+<div id="banner" style="display:none" class="text-white text-center text-sm font-bold py-2 px-4"></div>
+<nav class="bg-white shadow-sm p-5 mb-8"><div class="max-w-3xl mx-auto"><a href="index.html" id="brand" class="text-2xl"></a></div></nav>
+<main class="max-w-3xl mx-auto px-6"><h1 id="h" class="text-3xl mb-6"></h1><div id="body" class="space-y-4 text-sm leading-relaxed"></div></main>
+<script src="site.js"></script>
+<script>
+// TEMPLATE TEXT. Have a Canadian lawyer review before you take real money.
+const T = (S) => ({
+  privacy: ['Privacy Policy', [
+    `${S.business_name} collects only what we need to fill your order: your name, email, phone, shipping address and order details. Payments are handled by Stripe; we never see or store your card number.`,
+    'If you sign in with Google, we receive your name and email address to show your orders. We use your information to process orders, send order updates and answer your questions. We only send marketing email if you agree to it (CASL).',
+    'We share information only with the services needed to run the store (payment processing, shipping carriers, hosting). We do not sell your information. We keep order records as required for tax and accounting.',
+    `Under PIPEDA you may ask to see, correct or delete your personal information. Email ${S.contact_email || '[your email]'}.`]],
+  terms: ['Terms & Conditions', [
+    `By using this site and placing an order you agree to these terms. Prices are in Canadian dollars. Applicable taxes are added where required.`,
+    'Quantities are limited. We may cancel and refund an order if an item is out of stock or a price was listed in error. Deals marked as ended cannot be purchased. Pre-orders are charged at purchase and ship on or after the listed date.',
+    `Product images and descriptions are provided to help you choose. ${S.business_name} is not liable for indirect damages. These terms are governed by the laws of Ontario, Canada.`]],
+  shipping: ['Shipping', [
+    `We ship within Canada. Orders usually ship in ${S.ship_days} business days after payment. Once shipped, tracking details appear in My Orders.`,
+    'Shipping addresses are collected at checkout. Please double check yours, as we cannot redirect parcels once shipped.']],
+  returns: ['Returns & Refunds', [
+    `You may request a return within ${S.return_days} days of delivery for unused items in original packaging. Contact ${S.contact_email || '[your email]'} with your order number.`,
+    'Refunds go back to your original payment method once the item is received and checked. Items that arrive damaged or incorrect are refunded or replaced at no cost to you.']],
+  contact: ['Contact', [`Questions about an order? Email ${S.contact_email || '[your email]'} and include your order number.`]]
+});
+(async () => {
+  const d = await (await fetch(API)).json(); applyTheme(d.settings);
+  const [h, ps] = T(d.settings)[new URLSearchParams(location.search).get('p')] || T(d.settings).contact;
+  document.title = h + ' | ' + d.settings.site_name; document.getElementById('h').textContent = h;
+  document.getElementById('body').innerHTML = ps.map(p => `<p>${esc(p)}</p>`).join('');
+})();
+</script>
+</body>
+</html>

@@ -8,11 +8,18 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# /api is the canonical path used by site.js. It rewrites to the function, so
-# the storefront works even if the function's own `config.path` is not picked
-# up by an older deploy. /.netlify/functions/api keeps working as well.
+# /api is the canonical path used by site.js. These are rewrites (status 200) to
+# the function's default URL, which is what makes the bare `/api` work: a
+# `config.path` in the function replaces that default route and then `/api`
+# 404s, so routing lives here instead.
 [[redirects]]
   from = "/api"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
   to = "/.netlify/functions/api"
   status = 200
   force = true

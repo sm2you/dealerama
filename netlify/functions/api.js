@@ -16,11 +16,14 @@
  *    web apps behave differently depending on deployment settings).
  *  - Products are normalised here (ids, images, variants) so the browser never
  *    has to guess about `'` characters, nested arrays or JSON-in-a-cell.
- *  - `config.path` maps /api -> this function without a redirect; netlify.toml
- *    also rewrites /api so both spellings work.
+ *
+ * ROUTING (learned the hard way, in production):
+ *  - Do NOT declare `config.path` here. A custom path replaces the default
+ *    `/.netlify/functions/api` route, and `path: '/api/*'` does not match the
+ *    bare `/api` the storefront calls — the result is a 404 on every request.
+ *  - Instead, netlify.toml rewrites `/api` and `/api/*` to the default function
+ *    route, so both spellings work and the function keeps its own URL.
  */
-
-export const config = { path: '/api/*' };
 
 const APPS_SCRIPT_URL = () => (process.env.APPS_SCRIPT_URL || '').trim();
 const MAX_GET_FALLBACK = 6000; // Google's URL length ceiling is ~8 KB

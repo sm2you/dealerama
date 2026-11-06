@@ -3,56 +3,49 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dealerama | Today's Hottest Deals</title>
+<title>Deals</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="text-gray-800">
 <div id="banner" style="display:none" class="text-white text-center text-sm font-bold py-2 px-4"></div>
-<nav class="bg-white shadow-sm p-6 mb-10">
-  <div class="max-w-6xl mx-auto"><a href="index.html" id="brand" class="text-3xl font-black uppercase tracking-tighter"></a></div>
-</nav>
-<main class="max-w-6xl mx-auto px-6 pb-24">
-  <div id="paid" class="hidden mb-8 rounded-xl bg-green-50 border border-green-200 text-green-800 p-4 font-semibold">Payment received. Thank you! A receipt is on its way to your email.</div>
+<nav class="bg-white shadow-sm p-5 mb-8"><div class="max-w-6xl mx-auto flex justify-between items-center"><a href="index.html" id="brand" class="text-3xl font-black"></a><div id="auth"></div></div></nav>
+<main class="max-w-6xl mx-auto px-6">
   <div id="loading" class="text-center text-gray-400 py-12">Loading deals...</div>
   <div id="sections"></div>
 </main>
 <script src="site.js"></script>
 <script>
-if (location.search.includes('paid=1')) document.getElementById('paid').classList.remove('hidden');
-
 function card(p, S) {
   const ended = p.status === 'archived';
   const label = ended ? 'Ended' : p.status === 'upcoming' ? 'Coming soon' : (p.dealType === 'weekly' ? 'Deal of the week' : p.dealType === 'daily' ? 'Deal of the day' : 'Deal');
-  const plain = String(p.description || '').replace(/<[^>]*>?/gm, '').substring(0, 90);
   const href = 'product.html?id=' + encodeURIComponent(p.id);
+  const plain = String(p.description || '').replace(/<[^>]*>?/gm, '').substring(0, 90);
   return `<div class="card bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 flex flex-col relative ${ended ? 'opacity-60' : ''}">
     <span class="badge" ${ended ? 'style="background:#6b7280"' : ''}>${esc(label)}</span>
-    <a href="${href}"><img src="${esc(p.images[0] || PLACEHOLDER)}" referrerpolicy="no-referrer" loading="lazy" onerror="this.onerror=null;this.src='${PLACEHOLDER}'" class="w-full h-72 object-contain bg-gray-50 p-3"></a>
+    ${carousel(p.images, href)}
     <div class="p-5 flex flex-col flex-grow">
-      <a href="${href}"><h4 class="font-bold text-base mb-1 hover:underline line-clamp-2">${esc(p.title)}</h4></a>
+      <a href="${href}"><h4 class="text-base mb-1 hover:underline">${esc(p.title)}</h4></a>
       ${on(S.reviews_on) && p.reviewCount ? `<div class="text-sm mb-1">${stars(p.rating)} <span class="text-gray-500">(${p.reviewCount})</span></div>` : ''}
       <p class="text-gray-500 text-sm mb-2 flex-grow">${esc(plain)}${plain ? '...' : ''}</p>
-      ${!ended && p.status === 'live' && on(S.stock_bar_on) ? stockBar(p) : ''}
-      <div class="flex justify-between items-center mt-4">
-        <span class="text-2xl font-black text-green-600">${money(p.price)}</span>
-        <a href="${href}" class="btn-p px-5 py-2 rounded-full text-sm font-bold">${ended ? 'View' : p.status === 'upcoming' ? 'Preview' : 'View Deal'}</a>
-      </div></div></div>`;
+      ${p.status === 'live' && on(S.stock_bar_on) ? stockBar(p, S) : ''}
+      <div class="flex justify-between items-center mt-4"><span class="text-2xl font-black text-green-600">${money(p.price)}</span>
+      <a href="${href}" class="btn-p px-5 py-2 rounded-full text-sm font-bold">${ended ? 'View' : p.status === 'upcoming' ? 'Preview' : 'View Deal'}</a></div>
+    </div></div>`;
 }
-
 async function load() {
   const L = document.getElementById('loading');
   try {
-    const r = await fetch(API); const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    applyTheme(d.settings); document.title = d.settings.site_name + ' | Deals';
-    const groups = [['Today\'s Hottest Deals', 'live'], ['Upcoming Deals', 'upcoming'], ['Past Deals', 'archived']];
+    const d = await (await fetch(API)).json(); if (d.error) throw new Error(d.error);
+    applyTheme(d.settings); document.title = d.settings.site_name + ' | Deals'; initAuth(d.settings);
     let html = '';
-    groups.forEach(([h, st]) => {
+    [["Today's Hottest Deals", 'live'], ['Upcoming Deals', 'upcoming'], ['Past Deals', 'archived']].forEach(([h, st]) => {
       const list = d.products.filter(p => p.status === st);
-      if (list.length) html += `<h2 class="text-3xl font-bold mb-6 mt-10">${h}</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-8">${list.map(p => card(p, d.settings)).join('')}</div>`;
+      if (list.length) html += `<h2 class="text-3xl mb-6 mt-10">${h}</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-8">${list.map(p => card(p, d.settings)).join('')}</div>`;
     });
     L.classList.add('hidden');
-    document.getElementById('sections').innerHTML = html || '<p class="text-center text-gray-400 py-12">No deals right now. Check back soon!</p>';
+    const box = document.getElementById('sections');
+    box.innerHTML = html || '<p class="text-center text-gray-400 py-12">No deals right now. Check back soon!</p>';
+    initCarousels(box);
   } catch (e) { L.textContent = 'Error loading products: ' + e.message; }
 }
 load();

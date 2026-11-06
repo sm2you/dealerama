@@ -4,118 +4,135 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>Dealerama Admin</title>
+<title>Admin</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 text-gray-800 p-4 md:p-8">
+<body class="bg-gray-100 text-gray-800 p-3 md:p-8 pb-24">
 <div class="max-w-6xl mx-auto">
-  <div class="flex justify-between items-center mb-4">
-    <h1 class="text-2xl font-black">Dealerama Admin</h1>
-    <div class="flex gap-2"><button id="sync" class="bg-white border px-3 py-1 rounded text-sm">Sync payments</button><button id="out" class="bg-white border px-3 py-1 rounded text-sm">Log out</button></div>
+  <div class="flex justify-between items-center mb-4 sticky top-0 bg-gray-100 py-2 z-30">
+    <h1 class="text-xl font-black">Admin</h1>
+    <div class="flex gap-2 items-center">
+      <button id="sync" class="bg-white border px-3 py-1 rounded text-sm">Sync payments</button>
+      <button id="out" class="bg-white border px-3 py-1 rounded text-sm">Log out</button>
+      <button id="save" class="bg-green-600 text-white px-5 py-2 rounded font-bold">Save</button>
+    </div>
   </div>
-  <div id="login" class="bg-white p-6 rounded-xl max-w-sm">
-    <label class="text-xs font-bold">Admin secret</label>
-    <input id="key" type="password" class="w-full border rounded p-2 my-2">
-    <button id="go" class="bg-black text-white w-full py-2 rounded font-bold">Enter</button>
-  </div>
+  <div id="msg" class="text-sm font-semibold mb-2 min-h-[1.25rem]"></div>
+  <div id="login" class="bg-white p-6 rounded-xl max-w-sm"><label class="text-xs font-bold">Admin secret</label>
+    <input id="key" type="password" class="w-full border rounded p-2 my-2"><button id="go" class="bg-black text-white w-full py-2 rounded font-bold">Enter</button></div>
   <div id="app" class="hidden">
-    <div class="flex gap-2 mb-4" id="tabs"></div>
-    <div id="msg" class="text-sm font-semibold mb-2"></div>
-    <div id="view"></div>
+    <div id="tabs" class="flex gap-2 mb-4"></div>
+    <div id="pane-products"></div><div id="pane-reviews" class="hidden"></div><div id="pane-settings" class="hidden"></div><div id="pane-orders" class="hidden"></div>
   </div>
 </div>
 <script src="site.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let K = sessionStorage.getItem('k') || '', D, tab = 'products';
-const call = (action, extra = {}) => api({ action, secret: K, ...extra });
+let K = sessionStorage.getItem('k') || '', D, settingsDirty = false, tab = 'products';
+const call = (a, x = {}) => api({ action: a, secret: K, ...x });
 const say = (t, bad) => { $('msg').textContent = t; $('msg').style.color = bad ? '#dc2626' : '#059669'; };
-const inp = 'border rounded p-1 text-sm w-full';
+const C = 'border rounded p-1 text-sm w-full bg-white';
+const opt = (v, list) => list.map(x => `<option ${x === v ? 'selected' : ''}>${x}</option>`).join('');
 
 async function load() {
-  try { D = await call('adminGet'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); render(); }
+  try { D = await call('adminGet'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); settingsDirty = false; $('pane-products').dataset.built = 'stale'; render(); }
   catch (e) { $('login').classList.remove('hidden'); $('app').classList.add('hidden'); if (K) say(e.message, 1); }
 }
 $('go').onclick = () => { K = $('key').value.trim(); sessionStorage.setItem('k', K); load(); };
 $('out').onclick = () => { sessionStorage.clear(); location.reload(); };
-$('sync').onclick = async () => { try { const r = await call('syncPayments'); say('Synced. ' + r.updated + ' paid order(s) applied.'); load(); } catch (e) { say(e.message, 1); } };
+$('sync').onclick = async () => { try { const r = await call('syncPayments'); say(r.updated + ' paid order(s) applied.'); load(); } catch (e) { say(e.message, 1); } };
 
 function render() {
+  ['products', 'reviews', 'settings', 'orders'].forEach(t => $('pane-' + t).classList.toggle('hidden', t !== tab));
   $('tabs').innerHTML = ['products', 'reviews', 'settings', 'orders'].map(t => `<button data-t="${t}" class="px-4 py-2 rounded font-bold ${t === tab ? 'bg-black text-white' : 'bg-white'}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('');
   $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
-  ({ products, reviews, settings, orders })[tab]();
+  if (!$('pane-products').dataset.built || $('pane-products').dataset.built === 'stale') { products(); reviews(); settings(); orders(); $('pane-products').dataset.built = 1; }
 }
 
 function products() {
-  const sel = (v, o) => o.map(x => `<option ${x === v ? 'selected' : ''}>${x}</option>`).join('');
-  $('view').innerHTML = `<p class="text-xs text-gray-500 mb-2">New scraped products arrive as <b>draft</b>. Set status to <b>live</b> and add real stock. "Sold" updates automatically from paid orders.</p>` + D.products.map(p => `
-  <div class="bg-white rounded-xl p-4 mb-3 grid md:grid-cols-12 gap-2 items-end" data-id="${esc(p.id)}">
+  $('pane-products').innerHTML = `<div class="bg-white p-3 rounded-xl mb-3 flex flex-wrap gap-2 items-center">
+    <button id="newp" class="bg-black text-white px-3 py-1 rounded text-sm font-bold">+ New product</button>
+    <input id="impu" class="${C} flex-1 min-w-[200px]" placeholder="Import from a product link (works on your phone)"><button id="imp" class="bg-gray-200 px-3 py-1 rounded text-sm font-bold">Import</button></div>
+    <p class="text-xs text-gray-500 mb-2">New products start as <b>draft</b>. "Record offline sale" is only for real sales made outside the site: it moves stock to sold. Online sales update automatically.</p>` +
+  D.products.map(p => `<div class="bg-white rounded-xl p-3 mb-3 grid md:grid-cols-12 gap-2 items-end" data-pid="${esc(p.id)}">
     <img src="${esc(p.images[0] || PLACEHOLDER)}" referrerpolicy="no-referrer" class="w-16 h-16 object-contain md:col-span-1">
-    <label class="md:col-span-3 text-xs font-bold">Title<input class="${inp}" data-f="title" value="${esc(p.title)}"></label>
-    <label class="md:col-span-1 text-xs font-bold">Price<input class="${inp}" data-f="price" type="number" step="0.01" value="${p.price}"></label>
-    <label class="md:col-span-1 text-xs font-bold">Stock<input class="${inp}" data-f="qty" type="number" min="0" value="${p.qty}"></label>
+    <label class="md:col-span-4 text-xs font-bold">Title<input class="${C}" data-f="title" value="${esc(p.title)}"></label>
+    <label class="md:col-span-1 text-xs font-bold">Price<input class="${C}" data-f="price" type="number" step="0.01" value="${p.price}"></label>
+    <label class="md:col-span-1 text-xs font-bold">Stock<input class="${C}" data-f="qty" type="number" min="0" value="${p.qty}"></label>
     <div class="md:col-span-1 text-xs font-bold">Sold<div class="p-1 text-sm">${p.sold}</div></div>
-    <label class="md:col-span-1 text-xs font-bold">Status<select class="${inp}" data-f="status">${sel(p.status, ['draft', 'live', 'upcoming', 'archived'])}</select></label>
-    <label class="md:col-span-1 text-xs font-bold">Type<select class="${inp}" data-f="dealType">${sel(p.dealType, ['daily', 'weekly', 'featured'])}</select></label>
-    <label class="md:col-span-2 text-xs font-bold">Starts<input class="${inp}" data-f="startsAt" type="date" value="${esc(p.startsAt.slice(0, 10))}"></label>
-    <label class="md:col-span-1 text-xs font-bold">Pre-order<input type="checkbox" data-f="preorder" ${p.preorder ? 'checked' : ''}></label>
-    <button class="save md:col-span-12 bg-black text-white rounded py-1 text-sm font-bold">Save</button>
+    <label class="md:col-span-2 text-xs font-bold">Record offline sale<input class="${C}" data-f="offline" type="number" min="0" placeholder="0"></label>
+    <label class="md:col-span-2 text-xs font-bold">Status<select class="${C}" data-f="status">${opt(p.status, ['draft', 'live', 'upcoming', 'archived'])}</select></label>
+    <label class="md:col-span-2 text-xs font-bold">Type<select class="${C}" data-f="dealType">${opt(p.dealType, ['daily', 'weekly', 'featured'])}</select></label>
+    <label class="md:col-span-2 text-xs font-bold">Starts<input class="${C}" data-f="startsAt" type="date" value="${esc(p.startsAt.slice(0, 10))}"></label>
+    <label class="md:col-span-2 text-xs font-bold">Pre-order <input type="checkbox" data-f="preorder" ${p.preorder ? 'checked' : ''}></label>
+    <label class="md:col-span-4 text-xs font-bold">Video link (YouTube or .mp4)<input class="${C}" data-f="videoUrl" value="${esc(p.videoUrl)}"></label>
+    <label class="md:col-span-6 text-xs font-bold">Description (HTML ok)<textarea class="${C}" rows="3" data-f="description">${esc(p.description)}</textarea></label>
+    <label class="md:col-span-6 text-xs font-bold">Image links (one per line, first = cover)<textarea class="${C}" rows="3" data-f="images">${esc(p.images.join('\n'))}</textarea></label>
+    <label class="md:col-span-12 text-xs font-bold">Add photo from this device <input type="file" accept="image/*" class="upl text-xs"></label>
   </div>`).join('');
-  document.querySelectorAll('.save').forEach(b => b.onclick = async () => {
-    const row = b.closest('[data-id]'), fields = {};
-    row.querySelectorAll('[data-f]').forEach(el => fields[el.dataset.f] = el.type === 'checkbox' ? (el.checked ? 'TRUE' : 'FALSE') : el.value);
-    try { await call('updateProduct', { id: row.dataset.id, fields }); say('Saved.'); } catch (e) { say(e.message, 1); }
+  $('newp').onclick = async () => { try { await call('createProduct'); say('Product created (draft).'); $('pane-products').dataset.built = 'stale'; load(); } catch (e) { say(e.message, 1); } };
+  $('imp').onclick = async () => { const u = $('impu').value.trim(); if (!u) return; say('Importing, can take up to 30s...'); try { const r = await call('importUrl', { url: u }); say('Imported as draft with ' + r.images.length + ' image(s).'); $('pane-products').dataset.built = 'stale'; load(); } catch (e) { say(e.message, 1); } };
+  document.querySelectorAll('.upl').forEach(f => f.onchange = async () => {
+    if (!f.files[0]) return; say('Uploading photo...');
+    try { const r = await call('uploadImage', { data: await shrink(f.files[0]) }); const ta = f.closest('[data-pid]').querySelector('[data-f=images]'); ta.value = (ta.value.trim() ? ta.value.trim() + '\n' : '') + r.url; ta.dispatchEvent(new Event('input', { bubbles: true })); say('Photo added. Press Save.'); }
+    catch (e) { say(e.message, 1); }
   });
 }
+function shrink(file) { return new Promise(res => { const im = new Image(); im.onload = () => { const s = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = im.width * s; c.height = im.height * s; c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .85).split(',')[1]); }; im.src = URL.createObjectURL(file); }); }
 
 function reviews() {
-  const opts = D.products.map(p => `<option value="${esc(p.id)}">${esc(p.title.slice(0, 60))}</option>`).join('');
-  $('view').innerHTML = `
-  <div class="bg-white rounded-xl p-4 mb-4"><h3 class="font-bold mb-1">Add a customer review</h3>
-    <p class="text-xs text-gray-500 mb-2">Only for feedback from a real customer (email, text, message). An order reference is required, and the review shows as "Verified purchase". Do not enter invented reviews.</p>
-    <div class="grid md:grid-cols-6 gap-2">
-      <select id="rp" class="${inp} md:col-span-2">${opts}</select>
-      <input id="rn" class="${inp}" placeholder="Customer name">
-      <input id="ro" class="${inp}" placeholder="Order ref / email on file">
-      <select id="rs" class="${inp}"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
-      <textarea id="rt" class="${inp} md:col-span-5" placeholder="Their words"></textarea>
-      <button id="radd" class="bg-black text-white rounded font-bold">Add</button></div></div>` +
-    D.reviews.map(r => `<div class="bg-white rounded-xl p-4 mb-2" data-id="${esc(r.id)}">
-      <div>${stars(r.stars)} <b>${esc(r.name)}</b> <span class="text-xs text-gray-400">${esc(r.orderRef)} · ${r.status}</span></div>
-      <p class="text-sm my-1">${esc(r.text)}</p>
-      <div class="flex gap-2"><input class="${inp}" placeholder="Seller reply" value="${esc(r.reply)}">
-      <button class="rsave bg-gray-200 px-3 rounded text-sm">Save reply</button>
-      <button class="rtog bg-gray-200 px-3 rounded text-sm" data-s="${r.status === 'shown' ? 'hidden' : 'shown'}">${r.status === 'shown' ? 'Hide' : 'Show'}</button></div></div>`).join('');
-  $('radd').onclick = async () => {
-    try { await call('addReview', { productId: $('rp').value, name: $('rn').value, orderRef: $('ro').value, stars: $('rs').value, text: $('rt').value }); say('Added.'); load(); } catch (e) { say(e.message, 1); }
-  };
-  document.querySelectorAll('.rsave').forEach(b => b.onclick = async () => { const d = b.closest('[data-id]'); try { await call('reviewUpdate', { id: d.dataset.id, reply: d.querySelector('input').value }); say('Reply saved.'); } catch (e) { say(e.message, 1); } });
-  document.querySelectorAll('.rtog').forEach(b => b.onclick = async () => { const d = b.closest('[data-id]'); try { await call('reviewUpdate', { id: d.dataset.id, status: b.dataset.s }); load(); } catch (e) { say(e.message, 1); } });
+  const po = D.products.map(p => `<option value="${esc(p.id)}">${esc(p.title.slice(0, 60))}</option>`).join('');
+  $('pane-reviews').innerHTML = `<div class="bg-white rounded-xl p-3 mb-3"><h3 class="font-bold">Add a real customer's review</h3>
+    <p class="text-xs text-gray-500 mb-2">Only for feedback from a real customer you can reference (order number or email on file). It shows as "Verified purchase". Customer submissions from the product page appear below as <b>pending</b>.</p>
+    <div class="grid md:grid-cols-6 gap-2"><select id="np" class="${C} md:col-span-2">${po}</select><input id="nn" class="${C}" placeholder="Customer name"><input id="no" class="${C}" placeholder="Order ref / email"><select id="ns" class="${C}"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
+    <textarea id="nt" class="${C} md:col-span-6" placeholder="Their words (saved with the main Save button)"></textarea></div></div>` +
+  D.reviews.map(r => `<div class="bg-white rounded-xl p-3 mb-2" data-rid="${esc(r.id)}"><div>${stars(r.stars)} <b>${esc(r.name)}</b> <span class="text-xs text-gray-400">${esc(r.email || r.orderRef)}</span></div>
+    <p class="text-sm my-1">${esc(r.text)}</p><div class="grid grid-cols-3 gap-2"><select class="${C}" data-f="status">${opt(r.status, ['shown', 'hidden', 'pending'])}</select><input class="${C} col-span-2" data-f="reply" placeholder="Seller reply" value="${esc(r.reply)}"></div></div>`).join('');
 }
 
+const OPTS = { font_body: FONTS, font_heading: FONTS, heading_weight: ['400', '700'], heading_style: ['normal', 'italic'], heading_transform: ['none', 'uppercase', 'capitalize'] };
 function settings() {
-  $('view').innerHTML = `<div class="bg-white rounded-xl p-4 grid md:grid-cols-2 gap-3">` + Object.keys(D.settings).map(k => {
-    const v = D.settings[k];
-    let f;
-    if (k.endsWith('_color')) f = `<input type="color" data-k="${k}" value="${esc(v)}">`;
+  $('pane-settings').innerHTML = `<div class="bg-white rounded-xl p-4 grid md:grid-cols-3 gap-3">` + Object.keys(D.settings).map(k => {
+    const v = D.settings[k]; let f;
+    if (OPTS[k]) f = `<select data-k="${k}" class="${C}">${opt(v, OPTS[k])}</select>`;
+    else if (k.endsWith('_color')) f = `<input type="color" data-k="${k}" value="${esc(v)}">`;
     else if (v === 'true' || v === 'false') f = `<input type="checkbox" data-k="${k}" ${v === 'true' ? 'checked' : ''}>`;
-    else if (k === 'font_scale') f = `<input type="number" step="0.05" min="0.7" max="1.6" data-k="${k}" class="${inp}" value="${esc(v)}">`;
-    else f = `<input data-k="${k}" class="${inp}" value="${esc(v)}">`;
-    return `<label class="text-xs font-bold">${k.replace(/_/g, ' ')}<div>${f}</div></label>`;
-  }).join('') + `<button id="ssave" class="md:col-span-2 bg-black text-white rounded py-2 font-bold">Save settings</button></div>
-  <p class="text-xs text-gray-500 mt-2">font_scale 1 = normal, 1.15 = larger text. Colours, logo URL and banner update the live site instantly.</p>`;
-  $('ssave').onclick = async () => {
-    const values = {};
-    document.querySelectorAll('[data-k]').forEach(el => values[el.dataset.k] = el.type === 'checkbox' ? String(el.checked) : el.value);
-    try { await call('setSettings', { values }); say('Settings saved. Refresh the site.'); } catch (e) { say(e.message, 1); }
-  };
+    else if (k === 'font_scale') f = `<input type="number" step="0.05" min="0.7" max="1.6" data-k="${k}" class="${C}" value="${esc(v)}">`;
+    else f = `<input data-k="${k}" class="${C}" value="${esc(v)}">`;
+    return `<label class="text-xs font-bold">${k.replace(/_/g, ' ')}<div>${f}</div></label>`; }).join('') + `</div>
+  <p class="text-xs text-gray-500 mt-2">font scale: 1 = normal, 1.15 = larger text. stock low at: bar turns red at or below this many left.</p>`;
 }
 
 function orders() {
-  $('view').innerHTML = `<div class="bg-white rounded-xl p-4 overflow-x-auto"><table class="w-full text-sm"><tr class="text-left text-xs text-gray-500"><th>Date</th><th>Qty</th><th>Amount</th><th>Status</th><th>Email</th></tr>` +
-    D.orders.map(o => `<tr class="border-t"><td>${esc(o.createdAt.slice(0, 16).replace('T', ' '))}</td><td>${o.qty}</td><td>${money(o.amount)}</td><td>${o.status}</td><td>${esc(o.email)}</td></tr>`).join('') + `</table></div>`;
+  const names = {}; D.products.forEach(p => names[p.id] = p.title);
+  $('pane-orders').innerHTML = D.orders.length ? D.orders.map(o => `<div class="bg-white rounded-xl p-3 mb-2 text-sm" data-oid="${esc(o.id)}">
+    <div class="flex flex-wrap justify-between gap-2"><b>${esc((names[o.productId] || 'Product').slice(0, 70))}</b><span>${esc(o.createdAt.slice(0, 16).replace('T', ' '))} · qty ${o.qty} · ${money(o.amount)} · <b>${o.status}</b></span></div>
+    <div class="text-gray-600 mt-1">${esc(o.name)} · ${esc(o.email)} · ${esc(o.phone)}</div><div class="text-gray-600">${esc(o.address)}</div><div class="text-gray-500 text-xs">Paid with: ${esc(o.payment || 'n/a')}</div>
+    <div class="grid grid-cols-3 gap-2 mt-2"><select class="${C}" data-f="shipStatus">${opt(o.shipStatus, ['', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])}</select><input class="${C} col-span-2" data-f="tracking" placeholder="Tracking number" value="${esc(o.tracking)}"></div></div>`).join('') : '<p class="text-gray-500">No orders yet.</p>';
 }
 
+document.addEventListener('input', (e) => { const r = e.target.closest('[data-pid],[data-rid],[data-oid]'); if (r) r.dataset.dirty = 1; else if (e.target.closest('#pane-settings')) settingsDirty = true; });
+document.addEventListener('change', (e) => { const r = e.target.closest('[data-pid],[data-rid],[data-oid]'); if (r) r.dataset.dirty = 1; else if (e.target.closest('#pane-settings')) settingsDirty = true; });
+
+function collect(r) {
+  const f = {};
+  r.querySelectorAll('[data-f]').forEach(el => { let v = el.type === 'checkbox' ? (el.checked ? 'TRUE' : 'FALSE') : el.value; if (el.dataset.f === 'images') v = v.split('\n').map(s => s.trim()).filter(Boolean); f[el.dataset.f] = v; });
+  return f;
+}
+$('save').onclick = async () => {
+  const q = (s) => [...document.querySelectorAll(s + '[data-dirty]')];
+  const payload = {
+    products: q('[data-pid]').map(r => ({ id: r.dataset.pid, fields: collect(r) })),
+    reviews: q('[data-rid]').map(r => ({ id: r.dataset.rid, ...collect(r) })),
+    orders: q('[data-oid]').map(r => ({ id: r.dataset.oid, ...collect(r) }))
+  };
+  if (settingsDirty) { payload.settings = {}; document.querySelectorAll('#pane-settings [data-k]').forEach(el => payload.settings[el.dataset.k] = el.type === 'checkbox' ? String(el.checked) : el.value); }
+  if ($('nt') && $('nt').value.trim()) payload.newReview = { productId: $('np').value, name: $('nn').value, orderRef: $('no').value, stars: $('ns').value, text: $('nt').value };
+  $('save').disabled = true; say('Saving...');
+  try { const r = await call('saveAll', payload); if (r.error) throw new Error(r.error); say('Saved.'); $('pane-products').dataset.built = 'stale'; await load(); }
+  catch (e) { say(e.message, 1); }
+  $('save').disabled = false;
+};
 if (K) load();
 </script>
 </body>

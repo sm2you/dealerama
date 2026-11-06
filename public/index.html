@@ -51,7 +51,10 @@ async function loadProducts() {
     } else {
       document.getElementById('loading').textContent = 'No deals active right now.';
     }
-  } catch (err) { console.error(err); }
+    } catch (err) { 
+    document.getElementById('loading').textContent = 'Error loading data: ' + err.message;
+    document.getElementById('loading').classList.remove('hidden');
+  }
 }
 loadProducts();
 </script>

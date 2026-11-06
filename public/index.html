@@ -33,11 +33,14 @@ async function loadProducts() {
     if (data.products && data.products.length > 0) {
       const grid = document.getElementById('product-grid');
       grid.innerHTML = data.products.map(p => {
-        let coverImage = (p.images && p.images.length > 0) ? p.images[0] : 'https://placehold.co/400x400?text=No+Image';
+        let coverImage = (p.images && p.images.length > 0 && p.images[0]) ? p.images[0] : 'https://placehold.co/400x400?text=No+Image';
         
-        // Fix Google Drive image links
-        if (coverImage.includes('lh3.googleusercontent.com')) {
-           coverImage = coverImage.replace('lh3.googleusercontent.com/d/', 'drive.google.com/uc?export=view&id=');
+        // Strict Regex to extract Google Drive ID and use the proxy
+        if (coverImage.includes('lh3.googleusercontent.com') || coverImage.includes('drive.google.com')) {
+           const match = coverImage.match(/id=([a-zA-Z0-9_-]+)/) || coverImage.match(/d\/([a-zA-Z0-9_-]+)/);
+           if (match && match[1]) {
+             coverImage = `https://wsrv.nl/?url=https://drive.google.com/uc?id=${match[1]}&w=600&output=webp`;
+           }
         }
 
         const plainDesc = p.description ? p.description.replace(/<[^>]*>?/gm, '').substring(0, 80) + '...' : 'No description available.';
@@ -46,7 +49,7 @@ async function loadProducts() {
         <div class="product-card bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 flex flex-col relative">
           <span class="badge">${p.dealType ? p.dealType.toUpperCase() : 'DEAL'}</span>
           <a href="product.html?id=${p.id}">
-            <img src="${coverImage}" referrerpolicy="no-referrer" class="w-full h-64 object-contain bg-gray-50 p-4">
+            <img src="${coverImage}" class="w-full h-64 object-contain bg-gray-50 p-4">
           </a>
           <div class="p-6 flex flex-col flex-grow">
             <a href="product.html?id=${p.id}"><h4 class="font-bold text-lg mb-2 hover:text-blue-600">${p.title}</h4></a>
@@ -63,7 +66,6 @@ async function loadProducts() {
     }
   } catch (err) { 
     document.getElementById('loading').textContent = 'Error loading products: ' + err.message;
-    console.error(err); 
   }
 }
 loadProducts();

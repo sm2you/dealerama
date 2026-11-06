@@ -46,18 +46,6 @@
 </main>
 
 <script>
-// Helper to fix Google Drive URLs using the wsrv.nl proxy
-function formatImageUrl(url) {
-  if (!url) return 'https://placehold.co/800x800?text=No+Image';
-  if (url.includes('lh3.googleusercontent.com') || url.includes('drive.google.com')) {
-     const match = url.match(/id=([a-zA-Z0-9_-]+)/) || url.match(/d\/([a-zA-Z0-9_-]+)/);
-     if (match && match[1]) {
-       return `https://wsrv.nl/?url=https://drive.google.com/uc?id=${match[1]}&w=1000&output=webp`;
-     }
-  }
-  return url;
-}
-
 async function loadProduct() {
   const productId = new URLSearchParams(window.location.search).get('id');
   if (!productId) return document.getElementById('loading').textContent = 'No product ID provided.';
@@ -66,7 +54,10 @@ async function loadProduct() {
     const res = await fetch('/.netlify/functions/get-products');
     const data = await res.json();
     
-    const product = data.products.find(p => String(p.id) === String(productId));
+    // Find the product by cleaning both IDs (removes apostrophes and spaces)
+    const product = data.products.find(p => 
+      String(p.id).replace(/'/g, '').trim() === String(productId).replace(/'/g, '').trim()
+    );
     
     if (!product) {
       document.getElementById('loading').textContent = 'Product not found.';
@@ -79,17 +70,21 @@ async function loadProduct() {
     document.getElementById('stripe-link').href = product.stripeLink || '#';
 
     if (product.images && product.images.length > 0) {
-      document.getElementById('main-image').src = formatImageUrl(product.images[0]);
+      // Clean main image
+      let cleanMain = String(product.images[0]).replace(/[\[\]"]/g, '');
+      document.getElementById('main-image').src = cleanMain;
 
       const thumbGrid = document.getElementById('thumbnail-grid');
       product.images.forEach((imgUrl, i) => {
-        const thumbUrl = formatImageUrl(imgUrl);
+        // Clean thumbnail images
+        let cleanThumb = String(imgUrl).replace(/[\[\]"]/g, '');
+        
         const thumb = document.createElement('img');
-        thumb.src = thumbUrl;
+        thumb.src = cleanThumb;
         thumb.className = `gallery-img w-full aspect-square object-cover rounded-lg bg-gray-50 p-2 ${i === 0 ? 'active' : ''}`;
         
         thumb.onclick = () => {
-          document.getElementById('main-image').src = thumbUrl;
+          document.getElementById('main-image').src = cleanThumb;
           document.querySelectorAll('.gallery-img').forEach(el => el.classList.remove('active'));
           thumb.classList.add('active');
         };

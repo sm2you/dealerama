@@ -2,7 +2,7 @@ export default async (req, context) => {
   const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
   
   if (!APPS_SCRIPT_URL) {
-    return new Response(JSON.stringify({ error: "Missing APPS_SCRIPT_URL environment variable in Netlify" }), {
+    return new Response(JSON.stringify({ error: "Missing APPS_SCRIPT_URL environment variable" }), {
       status: 500, headers: { "Content-Type": "application/json" }
     });
   }
@@ -13,21 +13,38 @@ export default async (req, context) => {
       body: JSON.stringify({ action: 'get' })
     });
     
-    const text = await response.text(); // Get raw text first to see if Google returns an error page
+    const data = await response.json();
     
-    try {
-      const data = JSON.parse(text);
-      return new Response(JSON.stringify(data), {
-        status: 200, headers: { "Content-Type": "application/json" }
-      });
-    } catch (e) {
-      // If it fails to parse, Google sent back an HTML error page (like a login screen)
-      return new Response(JSON.stringify({ error: "Google returned invalid JSON. Raw response: " + text.substring(0, 100) }), {
-        status: 500, headers: { "Content-Type": "application/json" }
+    // CLEAN THE DATA BEFORE SENDING TO THE WEBSITE
+    if (data && data.products) {
+      data.products = data.products.map(p => {
+        // 1. Fix the ID (remove the apostrophe Google Sheets adds)
+        let cleanId = String(p.id).replace(/'/g, '').trim();
+        
+        // 2. Fix the Images (turn nested arrays into flat text links)
+        let cleanImages = [];
+        if (p.images) {
+           // If it's a string that looks like JSON, parse it
+           let parsed = p.images;
+           if (typeof p.images === 'string') {
+               try { parsed = JSON.parse(p.images); } catch(e) { parsed = []; }
+           }
+           // Flatten the array completely and remove quotes
+           if (Array.isArray(parsed)) {
+               cleanImages = parsed.flat(Infinity).map(img => String(img).replace(/[\[\]"]/g, '').trim());
+           }
+        }
+
+        return { ...p, id: cleanId, images: cleanImages };
       });
     }
+
+    return new Response(JSON.stringify(data), {
+      status: 200, headers: { "Content-Type": "application/json" }
+    });
+    
   } catch (error) {
-    return new Response(JSON.stringify({ error: "Fetch failed: " + error.message }), {
+    return new Response(JSON.stringify({ error: error.message }), {
       status: 500, headers: { "Content-Type": "application/json" }
     });
   }

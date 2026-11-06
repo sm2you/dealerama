@@ -3,137 +3,140 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Product | Dealerama</title>
+<title>Product</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<style>.thumb{cursor:pointer;border:2px solid transparent}.thumb.active{border-color:var(--p)}#lb{display:none}#lb.open{display:flex}</style>
+<style>
+.thumb{cursor:pointer;border:2px solid transparent;background:#fff;padding:4px}.thumb.active{border-color:var(--p)}
+#lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.92)}#lb.open{display:block}
+#lbt{display:flex;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}#lbt::-webkit-scrollbar{display:none}
+#lbt div{flex:0 0 100%;scroll-snap-align:center;display:flex;align-items:center;justify-content:center}#lbt img{max-width:96vw;max-height:92vh;object-fit:contain}
+.lbb{position:absolute;top:50%;color:#fff;font-size:48px;padding:0 14px;transform:translateY(-50%)}
+.rs{font-size:30px;color:#d1d5db}.rs.on{color:#f59e0b}
+</style>
 </head>
 <body class="text-gray-900">
 <div id="banner" style="display:none" class="text-white text-center text-sm font-bold py-2 px-4"></div>
-<nav class="border-b p-6 bg-white sticky top-0 z-40 flex justify-between items-center">
+<nav class="border-b p-5 bg-white sticky top-0 z-40 flex justify-between items-center">
   <a href="index.html" class="text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-black">&larr; Back</a>
-  <a href="index.html" id="brand" class="text-xl font-black uppercase"></a>
+  <a href="index.html" id="brand" class="text-xl"></a><div id="auth"></div>
 </nav>
 <div id="loading" class="text-center py-32 text-gray-400">Loading product...</div>
 
-<main id="content" class="max-w-7xl mx-auto px-6 py-10 hidden">
-  <div class="grid lg:grid-cols-[3fr_2fr] gap-12">
+<main id="content" class="max-w-6xl mx-auto px-6 py-8 hidden">
+  <div class="grid lg:grid-cols-2 gap-10">
     <div>
-      <div class="bg-white rounded-2xl border border-gray-100 flex items-center justify-center" style="height:min(80vh,720px)">
-        <img id="main" src="" referrerpolicy="no-referrer" title="Click to enlarge" class="max-w-full max-h-full object-contain p-4 cursor-zoom-in">
-      </div>
-      <div id="thumbs" class="grid grid-cols-5 sm:grid-cols-6 gap-3 mt-4"></div>
+      <div id="gal" class="rounded-2xl overflow-hidden border border-gray-100"></div>
+      <div id="thumbs" class="grid grid-cols-5 gap-2 mt-3"></div>
+      <div id="video" class="mt-6 hidden"></div>
     </div>
     <div>
-      <h1 id="title" class="text-2xl md:text-3xl font-extrabold leading-snug mb-2"></h1>
+      <h1 id="title" class="text-2xl md:text-3xl leading-snug mb-2"></h1>
       <div id="rating" class="mb-3 text-sm"></div>
       <p id="price" class="text-3xl font-black mb-1"></p>
-      <p id="meta" class="text-sm text-gray-500 mb-2"></p>
+      <p id="meta" class="text-sm text-gray-500"></p>
       <div id="stock"></div>
-      <div id="buyBox" class="mt-6">
-        <div id="qtyRow" class="flex items-center gap-3 mb-4">
-          <span class="text-sm font-bold">Qty</span>
+      <div class="mt-6">
+        <div id="qtyRow" class="flex items-center gap-3 mb-4"><span class="text-sm font-bold">Qty</span>
           <button id="minus" class="w-10 h-10 rounded-full border text-xl">−</button>
           <input id="qty" value="1" readonly class="w-14 text-center border rounded-lg py-2 font-bold">
-          <button id="plus" class="w-10 h-10 rounded-full border text-xl">+</button>
-        </div>
+          <button id="plus" class="w-10 h-10 rounded-full border text-xl">+</button></div>
         <button id="buy" class="btn-p w-full py-4 rounded-full font-bold text-lg shadow-lg"></button>
         <p id="err" class="text-red-600 text-sm mt-2"></p>
       </div>
-      <div class="border-t pt-6 mt-8">
-        <h3 class="text-sm font-bold uppercase tracking-widest text-gray-400 mb-3">Description</h3>
-        <div id="desc" class="text-gray-600 leading-relaxed text-sm space-y-3"></div>
-      </div>
+      <div class="border-t pt-6 mt-8"><h3 class="text-sm uppercase tracking-widest text-gray-400 mb-3">Description</h3>
+        <div id="desc" class="text-gray-600 leading-relaxed text-sm space-y-3"></div></div>
     </div>
   </div>
-  <section id="reviews" class="mt-16 max-w-3xl"></section>
+  <section id="reviews" class="mt-14 max-w-3xl"></section>
 </main>
 
-<div id="lb" class="fixed inset-0 z-[100] bg-black/90 items-center justify-center">
-  <button id="lbx" class="absolute top-4 right-6 text-white text-4xl">✕</button>
-  <button id="lbp" class="absolute left-4 text-white text-5xl px-3">‹</button>
-  <img id="lbi" referrerpolicy="no-referrer" class="max-h-[92vh] max-w-[92vw] object-contain">
-  <button id="lbn" class="absolute right-4 text-white text-5xl px-3">›</button>
-</div>
+<div id="lb"><button id="lbx" class="absolute top-3 right-5 text-white text-4xl z-10">✕</button>
+  <button id="lbp" class="lbb" style="left:0">‹</button><button id="lbn" class="lbb" style="right:0">›</button><div id="lbt"></div></div>
 
 <script src="site.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-let P, imgs = [], cur = 0;
+let P, S, imgs = [], mainTrack;
 
-function show(i) {
-  cur = (i + imgs.length) % imgs.length;
-  $('main').src = imgs[cur]; $('lbi').src = imgs[cur];
-  document.querySelectorAll('.thumb').forEach((t, k) => t.classList.toggle('active', k === cur));
+function video(url) {
+  const y = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/);
+  if (y) return `<div class="aspect-video rounded-xl overflow-hidden"><iframe class="w-full h-full" src="https://www.youtube.com/embed/${y[1]}" allowfullscreen loading="lazy"></iframe></div>`;
+  if (/^https:\/\//.test(url)) return `<video src="${esc(url)}" controls playsinline preload="metadata" class="w-full rounded-xl bg-black"></video>`;
+  return '';
+}
+
+function openLb(i) { $('lb').classList.add('open'); const t = $('lbt'); t.scrollTo({ left: i * t.clientWidth }); }
+function reviewsHtml(revs) {
+  const u = authUser();
+  return `<h2 class="text-2xl mb-4">Customer reviews</h2>` + (revs.length ? revs.map(r => `<div class="border-b py-4"><div>${stars(r.stars)} <b class="ml-1">${esc(r.name)}</b>${r.verified ? ' <span class="text-xs text-green-700 font-semibold ml-1">Verified purchase</span>' : ''}</div>
+    <p class="text-sm text-gray-700 mt-1">${esc(r.text)}</p>${r.reply ? `<p class="text-sm bg-gray-50 border-l-4 pl-3 py-2 mt-2"><b>Seller reply:</b> ${esc(r.reply)}</p>` : ''}</div>`).join('') : '<p class="text-gray-400 text-sm mb-4">No reviews yet. Be the first!</p>') + `
+  <div class="bg-white rounded-xl p-5 mt-6 border"><h3 class="mb-2 text-lg">Write a review</h3>
+    <div id="rstars" class="mb-2">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="rs" data-n="${n}">★</button>`).join('')}</div>
+    <div class="grid sm:grid-cols-2 gap-2 mb-2"><input id="rn" class="border rounded p-2 text-sm" placeholder="Your name" value="${esc(u ? u.name || '' : '')}"><input id="re" type="email" class="border rounded p-2 text-sm" placeholder="Your email (not shown)" value="${esc(u ? u.email : '')}"></div>
+    <textarea id="rt" rows="3" maxlength="1000" class="w-full border rounded p-2 text-sm" placeholder="What did you think?"></textarea>
+    <button id="rsend" class="btn-p mt-2 px-6 py-2 rounded-full font-bold text-sm">Submit review</button><p id="rmsg" class="text-sm mt-2"></p>
+    <p class="text-xs text-gray-400 mt-1">Signed-in customers with a paid order are published instantly as "Verified purchase". Others are published after approval.</p></div>`;
 }
 
 async function load() {
   const L = $('loading'), id = new URLSearchParams(location.search).get('id');
   if (!id) { L.textContent = 'No product ID.'; return; }
   try {
-    const d = await (await fetch(API)).json();
-    if (d.error) throw new Error(d.error);
-    applyTheme(d.settings);
+    const d = await (await fetch(API)).json(); if (d.error) throw new Error(d.error);
+    S = d.settings; applyTheme(S); initAuth(S, () => { if (on(S.reviews_on)) $('reviews').innerHTML = reviewsHtml(d.reviews.filter(r => r.productId === P.id)), bindReview(); });
     P = d.products.find(p => p.id === id);
     if (!P) { L.textContent = 'Product not found.'; return; }
-    document.title = P.title + ' | ' + d.settings.site_name;
+    document.title = P.title + ' | ' + S.site_name;
     $('title').textContent = P.title;
     $('desc').innerHTML = P.description ? sanitize(P.description) : '<p>No description.</p>';
 
     imgs = P.images.length ? P.images : [PLACEHOLDER];
-    $('main').onerror = () => { $('main').onerror = null; $('main').src = PLACEHOLDER; };
-    imgs.forEach((u, i) => {
-      const t = document.createElement('img');
-      t.referrerPolicy = 'no-referrer'; t.src = u;
-      t.className = 'thumb w-full aspect-square object-cover rounded-lg bg-white p-1';
-      t.onclick = () => show(i); $('thumbs').appendChild(t);
-    });
-    show(0);
+    $('gal').innerHTML = carousel(imgs);
+    const track = $('gal').querySelector('.car-track'), thumbs = [];
+    imgs.forEach((u, i) => { const t = document.createElement('img'); t.referrerPolicy = 'no-referrer'; t.src = u; t.className = 'thumb w-full aspect-square object-contain rounded-lg ' + (i ? '' : 'active');
+      t.onclick = () => track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' }); $('thumbs').appendChild(t); thumbs.push(t); });
     if (imgs.length < 2) $('thumbs').classList.add('hidden');
-    $('main').onclick = () => $('lb').classList.add('open');
-    $('lbx').onclick = () => $('lb').classList.remove('open');
-    $('lbp').onclick = () => show(cur - 1); $('lbn').onclick = () => show(cur + 1);
-    $('lb').onclick = (e) => { if (e.target === $('lb')) $('lb').classList.remove('open'); };
-    document.onkeydown = (e) => {
-      if (!$('lb').classList.contains('open')) return;
-      if (e.key === 'Escape') $('lb').classList.remove('open');
-      if (e.key === 'ArrowLeft') show(cur - 1); if (e.key === 'ArrowRight') show(cur + 1);
-    };
+    initCarousels($('gal'), (i) => thumbs.forEach((t, k) => t.classList.toggle('active', k === i)));
+    track.addEventListener('click', () => openLb(Math.round(track.scrollLeft / track.clientWidth)));
+    $('lbt').innerHTML = imgs.map(u => `<div><img src="${esc(u)}" referrerpolicy="no-referrer"></div>`).join('');
+    const lbGo = (dd) => $('lbt').scrollBy({ left: dd * $('lbt').clientWidth, behavior: 'smooth' });
+    $('lbx').onclick = () => $('lb').classList.remove('open'); $('lbp').onclick = () => lbGo(-1); $('lbn').onclick = () => lbGo(1);
+    $('lbt').onclick = (e) => { if (e.target.tagName !== 'IMG') $('lb').classList.remove('open'); };
+    document.onkeydown = (e) => { if (!$('lb').classList.contains('open')) return; if (e.key === 'Escape') $('lb').classList.remove('open'); if (e.key === 'ArrowLeft') lbGo(-1); if (e.key === 'ArrowRight') lbGo(1); };
 
-    const revs = d.reviews.filter(r => r.productId === P.id), S = d.settings;
+    if (P.videoUrl && video(P.videoUrl)) { $('video').innerHTML = video(P.videoUrl); $('video').classList.remove('hidden'); }
+
     if (on(S.reviews_on) && P.reviewCount) $('rating').innerHTML = `${stars(P.rating)} <b>${P.rating}</b> <a href="#reviews" class="text-gray-500 underline">(${P.reviewCount} reviews)</a>`;
-
     $('price').textContent = money(P.price) + ' CAD';
-    const pre = P.status === 'upcoming' && P.preorder;
-    const canBuy = (P.status === 'live' || pre) && P.qty > 0;
+    const pre = P.status === 'upcoming' && P.preorder, canBuy = (P.status === 'live' || pre) && P.qty > 0;
     if (P.status === 'upcoming') $('meta').textContent = 'Coming ' + (P.startsAt ? new Date(P.startsAt).toLocaleDateString() : 'soon') + (pre ? ' - pre-order now' : '');
     if (P.status === 'archived') $('meta').textContent = 'This deal has ended.';
-    if (P.status === 'live' && on(S.stock_bar_on)) $('stock').innerHTML = stockBar(P);
-
-    if (!canBuy) {
-      $('qtyRow').classList.add('hidden');
-      $('buy').disabled = true;
-      $('buy').textContent = P.status === 'archived' ? 'Deal ended' : P.status === 'upcoming' ? 'Coming soon' : 'Sold out';
-    } else {
-      const upd = () => { const q = Number($('qty').value); $('buy').textContent = (pre ? 'Pre-order' : 'Buy now') + ' - ' + money(P.price * q); };
+    if (P.status === 'live' && on(S.stock_bar_on)) $('stock').innerHTML = stockBar(P, S);
+    if (!canBuy) { $('qtyRow').classList.add('hidden'); $('buy').disabled = true; $('buy').textContent = P.status === 'archived' ? 'Deal ended' : P.status === 'upcoming' ? 'Coming soon' : 'Sold out'; }
+    else {
+      const upd = () => { $('buy').textContent = (pre ? 'Pre-order' : 'Buy now') + ' - ' + money(P.price * Number($('qty').value)); };
       $('minus').onclick = () => { $('qty').value = Math.max(1, $('qty').value - 1); upd(); };
       $('plus').onclick = () => { $('qty').value = Math.min(P.qty, Number($('qty').value) + 1); upd(); };
       upd();
-      $('buy').onclick = async () => {
-        $('buy').disabled = true; $('err').textContent = '';
+      $('buy').onclick = async () => { $('buy').disabled = true; $('err').textContent = '';
         try { const r = await api({ action: 'checkout', productId: P.id, qty: Number($('qty').value) }); location.href = r.url; }
-        catch (e) { $('err').textContent = e.message; $('buy').disabled = false; }
-      };
+        catch (e) { $('err').textContent = e.message; $('buy').disabled = false; } };
     }
-
-    if (on(S.reviews_on)) {
-      $('reviews').innerHTML = `<h2 class="text-2xl font-bold mb-4">Customer reviews</h2>` + (revs.length
-        ? revs.map(r => `<div class="border-b py-4"><div>${stars(r.stars)} <b class="ml-1">${esc(r.name)}</b>${r.verified ? ' <span class="text-xs text-green-700 font-semibold ml-1">Verified purchase</span>' : ''}</div>
-          <p class="text-sm text-gray-700 mt-1">${esc(r.text)}</p>
-          ${r.reply ? `<p class="text-sm bg-gray-50 border-l-4 pl-3 py-2 mt-2"><b>Seller reply:</b> ${esc(r.reply)}</p>` : ''}</div>`).join('')
-        : '<p class="text-gray-400 text-sm">No reviews yet.</p>');
-    }
+    if (on(S.reviews_on)) { $('reviews').innerHTML = reviewsHtml(d.reviews.filter(r => r.productId === P.id)); bindReview(); }
     L.classList.add('hidden'); $('content').classList.remove('hidden');
   } catch (e) { L.textContent = 'Failed to load: ' + e.message; }
+}
+
+function bindReview() {
+  let n = 0; const m = $('rmsg');
+  document.querySelectorAll('.rs').forEach(b => b.onclick = () => { n = Number(b.dataset.n); document.querySelectorAll('.rs').forEach(x => x.classList.toggle('on', Number(x.dataset.n) <= n)); });
+  $('rsend').onclick = async () => {
+    if (!n) { m.textContent = 'Pick a star rating.'; m.style.color = '#dc2626'; return; }
+    $('rsend').disabled = true;
+    try { const r = await api({ action: 'submitReview', productId: P.id, stars: n, name: $('rn').value, email: $('re').value, text: $('rt').value });
+      m.style.color = '#059669'; m.textContent = r.published ? 'Thanks! Your verified review is live. Refresh to see it.' : 'Thanks! Your review will appear after approval.'; }
+    catch (e) { m.style.color = '#dc2626'; m.textContent = e.message; $('rsend').disabled = false; }
+  };
 }
 load();
 </script>

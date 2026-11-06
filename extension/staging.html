@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Review &amp; Publish — Dealerama</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f4f4f4; padding: 20px; margin: 0; color: #111; }
+    .container { max-width: 1040px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 860px) { .container { grid-template-columns: 1fr; } }
+    .card { background: white; padding: 24px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+    h2 { margin: 0 0 4px; font-size: 18px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+    .sub { font-size: 12px; color: #6b7280; margin: 8px 0 0; }
+    label { display: block; font-size: 12px; font-weight: 700; margin: 14px 0 4px; color: #374151; }
+    input[type="text"], input[type="password"], input[type="number"], input[type="url"], textarea {
+      width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; font-size: 13px;
+    }
+    textarea { height: 110px; resize: vertical; }
+    .hint { font-size: 11px; color: #6b7280; margin-top: 4px; line-height: 1.5; }
+    .row { display: flex; gap: 8px; align-items: flex-end; }
+    .row > *:first-child { flex: 1; }
+    .btn { background: #10b981; color: #fff; padding: 14px; border: none; border-radius: 8px; font-weight: 700; font-size: 16px; cursor: pointer; width: 100%; margin-top: 18px; }
+    .btn:disabled { background: #9ca3af; cursor: default; }
+    .btn-ghost { background: #e5e7eb; color: #111; padding: 10px 14px; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; margin-top: 0; width: auto; }
+    #status { margin-top: 14px; text-align: center; font-weight: 700; font-size: 13px; white-space: pre-wrap; }
+    .ok { color: #047857; } .err { color: #dc2626; } .warn { color: #b45309; }
+    .image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+    .img-wrap { position: relative; aspect-ratio: 1; border: 3px solid transparent; border-radius: 8px; overflow: hidden; cursor: pointer; background: #f3f4f6; }
+    .img-wrap img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+    .img-wrap.selected { border-color: #10b981; }
+    .img-wrap.selected::after {
+      content: '✓'; position: absolute; top: 4px; right: 4px; background: #10b981; color: #fff;
+      width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;
+    }
+    .dim { position: absolute; left: 0; bottom: 0; background: rgba(0,0,0,.72); color: #fff; font-size: 10px; padding: 2px 5px; }
+    .dim.low { background: #dc2626; }
+    #variants { font-size: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; margin-top: 6px; }
+    #variants .opt { margin-bottom: 4px; }
+    #variants .opt b { color: #111; }
+    #variants .none { color: #b45309; font-weight: 700; }
+    #variantTable { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+    #variantTable th, #variantTable td { border-bottom: 1px solid #f1f5f9; padding: 3px 4px; text-align: left; }
+    #variantTable th { color: #9ca3af; font-weight: 600; }
+    .src { display: inline-block; background: #ecfdf5; color: #047857; border-radius: 999px; padding: 1px 8px; font-size: 10px; font-weight: 700; margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h2>1. Product details</h2>
+    <div class="sub" id="sourceLine">No page scraped yet.</div>
+
+    <label>Title</label>
+    <input type="text" id="title">
+
+    <label>Price ($)</label>
+    <input type="number" id="price" step="0.01" min="0">
+
+    <label>Description</label>
+    <textarea id="description"></textarea>
+
+    <label>Variants found (size, colour, …)</label>
+    <div id="variants">none</div>
+    <label style="font-weight: 400; margin-top: 10px;">
+      <input type="checkbox" id="useVariants" checked>
+      Import these variants (set price / stock per variant in the admin dashboard)
+    </label>
+
+    <label>Stripe payment link (optional)</label>
+    <input type="text" id="stripeLink" placeholder="https://buy.stripe.com/...">
+
+    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0 0;">
+
+    <label>Publish endpoint</label>
+    <div class="row">
+      <input type="url" id="endpoint" placeholder="https://script.google.com/macros/s/AKfy…/exec">
+      <button type="button" id="testBtn" class="btn-ghost">Test</button>
+    </div>
+    <div class="hint">
+      Use the Apps Script <b>/exec</b> Web App URL (Deploy → Manage deployments). Going straight to Google
+      avoids Netlify's 10-second limit while images upload. A Netlify <code>/api</code> URL also works.
+    </div>
+
+    <label>Admin secret (saved in this browser only)</label>
+    <input type="password" id="secret" autocomplete="off">
+    <div class="hint">Printed once when you run <code>setup()</code> in Apps Script. Stored in <code>chrome.storage.local</code>, never in code.</div>
+  </div>
+
+  <div class="card">
+    <h2>2. Images</h2>
+    <p class="sub">Click an image to include or exclude it. Real pixel size is shown; anything under 500&nbsp;px is flagged red and deselected automatically.</p>
+    <div class="image-grid" id="imageGrid"></div>
+    <button id="publishBtn" class="btn">Publish to store (as draft)</button>
+    <div id="status"></div>
+  </div>
+</div>
+<script src="staging.js"></script>
+</body>
+</html>

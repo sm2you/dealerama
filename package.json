@@ -1,0 +1,13 @@
+{
+  "name": "dealerama",
+  "version": "5.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dealerama — Chrome extension + Netlify function + Google Apps Script deal store",
+  "scripts": {
+    "test": "node test/api.test.mjs && node test/code-gs.test.mjs && node test/variants.test.mjs && node test/configure.test.mjs && node test/push.test.mjs",
+    "check": "node test/check-syntax.mjs",
+    "configure": "node scripts/configure.mjs",
+    "push": "node scripts/push.mjs"
+  }
+}

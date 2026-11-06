@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Dealerama Importer",
+  "version": "5.0",
+  "description": "Scrape a product page (Amazon, Shopify, WooCommerce, generic) and publish it to Dealerama.",
+  "minimum_chrome_version": "111",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*",
+    "https://*.netlify.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Dealerama Importer"
+  }
+}

@@ -1,0 +1,23 @@
+﻿# Parked here on purpose: this file must be moved to .github/workflows/ci.yml
+# by someone whose token has the "Workflows" permission (a fine-grained PAT
+# without it is rejected by GitHub on push).
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Tests
+        run: npm test
+      - name: Static checks
+        run: npm run check

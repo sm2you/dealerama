@@ -1,17 +1,92 @@
-const API = '/.netlify/functions/api';
+/* ------------------------------------------------------------------ *
+ * API layer
+ * ---------------------------------------------------------------------------
+ * The old version posted to /.netlify/functions/api, while index.html and
+ * account.html fetched the same URL with GET and api.js answered
+ * "Method Not Allowed" as plain text — which is where
+ * `Unexpected token 'M', "Method Not Allowed"` came from.
+ *
+ * Now every page goes through these two helpers: JSON on the way out, JSON
+ * expected back, a readable error when it is not, and an automatic retry on
+ * the other route (/api vs /.netlify/functions/api).
+ * ------------------------------------------------------------------ */
+const API_ROUTES = ['/api', '/.netlify/functions/api'];
+let API_BASE = null;
+
+function apiErrorMessage(text, status) {
+  const t = String(text || '').trim();
+  if (/Method Not Allowed/i.test(t)) {
+    return 'The API rejected this request method. Deploy the current netlify/functions/api.js and reload.';
+  }
+  if (/^\s*<(!doctype|html)/i.test(t)) {
+    return 'The API returned an HTML page (HTTP ' + status + '). Check APPS_SCRIPT_URL and the Netlify function logs.';
+  }
+  if (/missing apps_script_url/i.test(t)) {
+    return 'APPS_SCRIPT_URL is not set in Netlify → Site configuration → Environment variables.';
+  }
+  return 'Unexpected response from the server (HTTP ' + status + '). ' + t.slice(0, 160);
+}
+
+async function apiRequest(method, body) {
+  const routes = API_BASE ? [API_BASE] : API_ROUTES;
+  let lastError = null;
+
+  for (const route of routes) {
+    let response;
+    try {
+      const init = { method: method, cache: 'no-store', headers: {} };
+      if (body) {
+        init.headers['Content-Type'] = 'application/json';
+        init.body = JSON.stringify(Object.assign({ token: TOKEN }, body));
+      }
+      response = await fetch(route, init);
+    } catch (e) {
+      lastError = new Error('Network error — could not reach ' + route + '.');
+      continue;
+    }
+
+    const text = await response.text();
+
+    if (response.status === 404) {
+      // Wrong route for this deployment: try the other spelling.
+      lastError = new Error('API not found at ' + route + '.');
+      continue;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      throw new Error(apiErrorMessage(text, response.status));
+    }
+    if (!response.ok && !data.error) {
+      throw new Error('Server error (HTTP ' + response.status + ').');
+    }
+    API_BASE = route;
+    return data;
+  }
+  throw lastError || new Error('Network error.');
+}
+
+async function api(body) {
+  const d = await apiRequest('POST', body);
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+/** Public read used by index.html, product.html and account.html. */
+async function getData() {
+  const d = await apiRequest('GET', null);
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
 const PLACEHOLDER = 'https://placehold.co/600x600?text=No+Image';
 const FONTS = ['system-ui', 'Inter', 'Poppins', 'Montserrat', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Raleway', 'Oswald', 'Playfair Display', 'Lora', 'Merriweather'];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => '$' + Number(n || 0).toFixed(2);
 const on = (v) => String(v).toLowerCase() === 'true';
 let TOKEN = localStorage.getItem('gt') || '';
-
-async function api(body) {
-  const r = await fetch(API, { method: 'POST', body: JSON.stringify({ token: TOKEN, ...body }) });
-  const d = await r.json();
-  if (d.error) throw new Error(d.error);
-  return d;
-}
 
 // ---- stars, stock bar, sanitizer ----
 const stars = (r) => `<span class="stars" style="--r:${Number(r) || 0}"></span>`;

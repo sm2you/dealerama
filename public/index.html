@@ -36,7 +36,7 @@ function card(p, S) {
 async function load() {
   const L = document.getElementById('loading');
   try {
-    const d = await (await fetch(API)).json(); if (d.error) throw new Error(d.error);
+    const d = await getData();
     const S = d.settings; applyTheme(S); document.title = S.site_name + ' | Deals'; initAuth(S);
     if (on(S.hero_on) && S.hero_title) document.getElementById('hero').innerHTML = `<div class="text-center text-white py-16 px-6 mb-4" style="background:${S.hero_image_url ? `linear-gradient(rgba(0,0,0,.5),rgba(0,0,0,.5)),url('${esc(S.hero_image_url)}') center/cover` : 'var(--p)'}"><h1 class="text-4xl md:text-5xl mb-3">${esc(S.hero_title)}</h1><p class="text-lg opacity-90">${esc(S.hero_sub)}</p></div>`;
     let html = '';

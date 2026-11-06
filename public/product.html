@@ -117,7 +117,7 @@ async function load() {
   const L = $('loading'), id = new URLSearchParams(location.search).get('id');
   if (!id) { L.textContent = 'No product ID.'; return; }
   try {
-    const d = await (await fetch(API)).json(); if (d.error) throw new Error(d.error);
+    const d = await getData();
     S = d.settings; applyTheme(S);
     initAuth(S, () => { if (on(S.reviews_on)) { $('reviews').innerHTML = reviewsHtml(d.reviews.filter(r => r.productId === P.id)); bindReview(); } });
     P = d.products.find(p => p.id === id); V = P && P.variants;

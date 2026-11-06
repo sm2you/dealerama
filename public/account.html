@@ -16,7 +16,9 @@
 </main>
 <script src="site.js"></script>
 <script>
-if (location.search.includes('paid=1')) document.getElementById('paid').classList.remove('hidden');
+const QS = new URLSearchParams(location.search);
+const JUST_PAID = QS.get('paid') === '1';
+if (JUST_PAID) document.getElementById('paid').classList.remove('hidden');
 const STEPS = ['processing', 'shipped', 'delivered'];
 async function showOrders() {
   const box = document.getElementById('list');
@@ -33,7 +35,24 @@ async function showOrders() {
         ${o.tracking ? `<p class="text-sm mt-2">Tracking: <b>${esc(o.tracking)}</b></p>` : ''}</div></div></div>`; }).join('') : 'No orders yet.';
   } catch (e) { box.textContent = e.message; }
 }
-(async () => { const d = await (await fetch(API)).json(); applyTheme(d.settings); initAuth(d.settings, showOrders); if (!d.settings.google_client_id) document.getElementById('list').textContent = 'Customer login is not set up yet.'; else showOrders(); })();
+(async () => {
+  const box = document.getElementById('list');
+  try {
+    // Apply the Stripe payment immediately instead of waiting for the 5-minute trigger.
+    const sessionId = QS.get('session_id');
+    if (JUST_PAID && sessionId) {
+      box.textContent = 'Confirming your payment…';
+      try { await api({ action: 'confirmOrder', sessionId: sessionId }); } catch (e) { /* the trigger will retry */ }
+    }
+    const d = await getData();
+    applyTheme(d.settings);
+    initAuth(d.settings, showOrders);
+    if (!d.settings.google_client_id) box.textContent = 'Customer login is not set up yet.';
+    else showOrders();
+  } catch (e) {
+    box.textContent = e.message;
+  }
+})();
 </script>
 </body>
 </html>

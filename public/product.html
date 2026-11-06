@@ -6,12 +6,15 @@
 <title>Product Details | Dealerama</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  .gallery-img { cursor: pointer; border: 2px solid transparent; }
+  .gallery-img { cursor: pointer; border: 2px solid transparent; transition: border 0.2s; }
   .gallery-img.active { border-color: #000; }
 </style>
 </head>
 <body class="bg-white text-gray-900 font-sans">
-<nav class="border-b p-6"><a href="index.html" class="text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-black">&larr; Back to Dealerama</a></nav>
+
+<nav class="border-b p-6 bg-white sticky top-0 z-50">
+  <a href="index.html" class="text-sm font-bold uppercase tracking-widest text-gray-500 hover:text-black transition">&larr; Back to Dealerama</a>
+</nav>
 
 <div id="loading" class="text-center py-32 text-gray-400">Loading product...</div>
 
@@ -20,8 +23,8 @@
     
     <!-- Left Side: Images -->
     <div>
-      <div class="aspect-[4/5] bg-gray-50 rounded-2xl overflow-hidden mb-4 border border-gray-100">
-        <img id="main-image" src="" class="w-full h-full object-cover">
+      <div class="aspect-[4/5] bg-gray-50 rounded-2xl overflow-hidden mb-4 border border-gray-100 flex items-center justify-center">
+        <img id="main-image" src="" referrerpolicy="no-referrer" class="w-full h-full object-contain p-4">
       </div>
       <div id="thumbnail-grid" class="grid grid-cols-4 gap-4"></div>
     </div>
@@ -43,36 +46,64 @@
     </div>
   </div>
 </main>
+
 <script>
 async function loadProduct() {
   const productId = new URLSearchParams(window.location.search).get('id');
-  if (!productId) return;
+  if (!productId) return document.getElementById('loading').textContent = 'No product ID provided.';
+
   try {
     const res = await fetch('/.netlify/functions/get-products');
     const data = await res.json();
+    
+    // We use String() to ensure the IDs match perfectly even if Google changed the format
     const product = data.products.find(p => String(p.id) === String(productId));
-    if (!product) return document.getElementById('loading').textContent = 'Not found.';
+    
+    if (!product) {
+      document.getElementById('loading').textContent = 'Product not found.';
+      return;
+    }
+
     document.getElementById('title').textContent = product.title;
-    document.getElementById('price').textContent = `$${product.price}`;
-    document.getElementById('description').innerHTML = product.description || '';
+    document.getElementById('price').textContent = `$${product.price || '0.00'}`;
+    document.getElementById('description').innerHTML = product.description || '<p>No description available.</p>';
     document.getElementById('stripe-link').href = product.stripeLink || '#';
+
     if (product.images && product.images.length > 0) {
-      document.getElementById('main-image').src = product.images[0];
+      // Fix Google Drive image links for the main image
+      let mainImgUrl = product.images[0];
+      if (mainImgUrl.includes('lh3.googleusercontent.com')) {
+        mainImgUrl = mainImgUrl.replace('lh3.googleusercontent.com/d/', 'drive.google.com/uc?export=view&id=');
+      }
+      document.getElementById('main-image').src = mainImgUrl;
+
+      const thumbGrid = document.getElementById('thumbnail-grid');
       product.images.forEach((imgUrl, i) => {
+        // Fix Google Drive image links for thumbnails
+        let thumbUrl = imgUrl;
+        if (thumbUrl.includes('lh3.googleusercontent.com')) {
+          thumbUrl = thumbUrl.replace('lh3.googleusercontent.com/d/', 'drive.google.com/uc?export=view&id=');
+        }
+
         const thumb = document.createElement('img');
-        thumb.src = imgUrl;
-        thumb.className = `gallery-img w-full aspect-square object-cover rounded-md ${i === 0 ? 'active' : ''}`;
+        thumb.src = thumbUrl;
+        thumb.referrerPolicy = "no-referrer";
+        thumb.className = `gallery-img w-full aspect-square object-cover rounded-lg bg-gray-50 p-2 ${i === 0 ? 'active' : ''}`;
+        
         thumb.onclick = () => {
-          document.getElementById('main-image').src = imgUrl;
+          document.getElementById('main-image').src = thumbUrl;
           document.querySelectorAll('.gallery-img').forEach(el => el.classList.remove('active'));
           thumb.classList.add('active');
         };
-        document.getElementById('thumbnail-grid').appendChild(thumb);
+        thumbGrid.appendChild(thumb);
       });
     }
+
     document.getElementById('loading').classList.add('hidden');
     document.getElementById('product-content').classList.remove('hidden');
-  } catch (err) {}
+  } catch (err) {
+    document.getElementById('loading').textContent = 'Failed to load product. Check connection.';
+  }
 }
 loadProduct();
 </script>

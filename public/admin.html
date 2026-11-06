@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Dealerama Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4 md:p-8">
+<div class="max-w-6xl mx-auto">
+  <div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-black">Dealerama Admin</h1>
+    <div class="flex gap-2"><button id="sync" class="bg-white border px-3 py-1 rounded text-sm">Sync payments</button><button id="out" class="bg-white border px-3 py-1 rounded text-sm">Log out</button></div>
+  </div>
+  <div id="login" class="bg-white p-6 rounded-xl max-w-sm">
+    <label class="text-xs font-bold">Admin secret</label>
+    <input id="key" type="password" class="w-full border rounded p-2 my-2">
+    <button id="go" class="bg-black text-white w-full py-2 rounded font-bold">Enter</button>
+  </div>
+  <div id="app" class="hidden">
+    <div class="flex gap-2 mb-4" id="tabs"></div>
+    <div id="msg" class="text-sm font-semibold mb-2"></div>
+    <div id="view"></div>
+  </div>
+</div>
+<script src="site.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let K = sessionStorage.getItem('k') || '', D, tab = 'products';
+const call = (action, extra = {}) => api({ action, secret: K, ...extra });
+const say = (t, bad) => { $('msg').textContent = t; $('msg').style.color = bad ? '#dc2626' : '#059669'; };
+const inp = 'border rounded p-1 text-sm w-full';
+
+async function load() {
+  try { D = await call('adminGet'); $('login').classList.add('hidden'); $('app').classList.remove('hidden'); render(); }
+  catch (e) { $('login').classList.remove('hidden'); $('app').classList.add('hidden'); if (K) say(e.message, 1); }
+}
+$('go').onclick = () => { K = $('key').value.trim(); sessionStorage.setItem('k', K); load(); };
+$('out').onclick = () => { sessionStorage.clear(); location.reload(); };
+$('sync').onclick = async () => { try { const r = await call('syncPayments'); say('Synced. ' + r.updated + ' paid order(s) applied.'); load(); } catch (e) { say(e.message, 1); } };
+
+function render() {
+  $('tabs').innerHTML = ['products', 'reviews', 'settings', 'orders'].map(t => `<button data-t="${t}" class="px-4 py-2 rounded font-bold ${t === tab ? 'bg-black text-white' : 'bg-white'}">${t[0].toUpperCase() + t.slice(1)}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  ({ products, reviews, settings, orders })[tab]();
+}
+
+function products() {
+  const sel = (v, o) => o.map(x => `<option ${x === v ? 'selected' : ''}>${x}</option>`).join('');
+  $('view').innerHTML = `<p class="text-xs text-gray-500 mb-2">New scraped products arrive as <b>draft</b>. Set status to <b>live</b> and add real stock. "Sold" updates automatically from paid orders.</p>` + D.products.map(p => `
+  <div class="bg-white rounded-xl p-4 mb-3 grid md:grid-cols-12 gap-2 items-end" data-id="${esc(p.id)}">
+    <img src="${esc(p.images[0] || PLACEHOLDER)}" referrerpolicy="no-referrer" class="w-16 h-16 object-contain md:col-span-1">
+    <label class="md:col-span-3 text-xs font-bold">Title<input class="${inp}" data-f="title" value="${esc(p.title)}"></label>
+    <label class="md:col-span-1 text-xs font-bold">Price<input class="${inp}" data-f="price" type="number" step="0.01" value="${p.price}"></label>
+    <label class="md:col-span-1 text-xs font-bold">Stock<input class="${inp}" data-f="qty" type="number" min="0" value="${p.qty}"></label>
+    <div class="md:col-span-1 text-xs font-bold">Sold<div class="p-1 text-sm">${p.sold}</div></div>
+    <label class="md:col-span-1 text-xs font-bold">Status<select class="${inp}" data-f="status">${sel(p.status, ['draft', 'live', 'upcoming', 'archived'])}</select></label>
+    <label class="md:col-span-1 text-xs font-bold">Type<select class="${inp}" data-f="dealType">${sel(p.dealType, ['daily', 'weekly', 'featured'])}</select></label>
+    <label class="md:col-span-2 text-xs font-bold">Starts<input class="${inp}" data-f="startsAt" type="date" value="${esc(p.startsAt.slice(0, 10))}"></label>
+    <label class="md:col-span-1 text-xs font-bold">Pre-order<input type="checkbox" data-f="preorder" ${p.preorder ? 'checked' : ''}></label>
+    <button class="save md:col-span-12 bg-black text-white rounded py-1 text-sm font-bold">Save</button>
+  </div>`).join('');
+  document.querySelectorAll('.save').forEach(b => b.onclick = async () => {
+    const row = b.closest('[data-id]'), fields = {};
+    row.querySelectorAll('[data-f]').forEach(el => fields[el.dataset.f] = el.type === 'checkbox' ? (el.checked ? 'TRUE' : 'FALSE') : el.value);
+    try { await call('updateProduct', { id: row.dataset.id, fields }); say('Saved.'); } catch (e) { say(e.message, 1); }
+  });
+}
+
+function reviews() {
+  const opts = D.products.map(p => `<option value="${esc(p.id)}">${esc(p.title.slice(0, 60))}</option>`).join('');
+  $('view').innerHTML = `
+  <div class="bg-white rounded-xl p-4 mb-4"><h3 class="font-bold mb-1">Add a customer review</h3>
+    <p class="text-xs text-gray-500 mb-2">Only for feedback from a real customer (email, text, message). An order reference is required, and the review shows as "Verified purchase". Do not enter invented reviews.</p>
+    <div class="grid md:grid-cols-6 gap-2">
+      <select id="rp" class="${inp} md:col-span-2">${opts}</select>
+      <input id="rn" class="${inp}" placeholder="Customer name">
+      <input id="ro" class="${inp}" placeholder="Order ref / email on file">
+      <select id="rs" class="${inp}"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
+      <textarea id="rt" class="${inp} md:col-span-5" placeholder="Their words"></textarea>
+      <button id="radd" class="bg-black text-white rounded font-bold">Add</button></div></div>` +
+    D.reviews.map(r => `<div class="bg-white rounded-xl p-4 mb-2" data-id="${esc(r.id)}">
+      <div>${stars(r.stars)} <b>${esc(r.name)}</b> <span class="text-xs text-gray-400">${esc(r.orderRef)} · ${r.status}</span></div>
+      <p class="text-sm my-1">${esc(r.text)}</p>
+      <div class="flex gap-2"><input class="${inp}" placeholder="Seller reply" value="${esc(r.reply)}">
+      <button class="rsave bg-gray-200 px-3 rounded text-sm">Save reply</button>
+      <button class="rtog bg-gray-200 px-3 rounded text-sm" data-s="${r.status === 'shown' ? 'hidden' : 'shown'}">${r.status === 'shown' ? 'Hide' : 'Show'}</button></div></div>`).join('');
+  $('radd').onclick = async () => {
+    try { await call('addReview', { productId: $('rp').value, name: $('rn').value, orderRef: $('ro').value, stars: $('rs').value, text: $('rt').value }); say('Added.'); load(); } catch (e) { say(e.message, 1); }
+  };
+  document.querySelectorAll('.rsave').forEach(b => b.onclick = async () => { const d = b.closest('[data-id]'); try { await call('reviewUpdate', { id: d.dataset.id, reply: d.querySelector('input').value }); say('Reply saved.'); } catch (e) { say(e.message, 1); } });
+  document.querySelectorAll('.rtog').forEach(b => b.onclick = async () => { const d = b.closest('[data-id]'); try { await call('reviewUpdate', { id: d.dataset.id, status: b.dataset.s }); load(); } catch (e) { say(e.message, 1); } });
+}
+
+function settings() {
+  $('view').innerHTML = `<div class="bg-white rounded-xl p-4 grid md:grid-cols-2 gap-3">` + Object.keys(D.settings).map(k => {
+    const v = D.settings[k];
+    let f;
+    if (k.endsWith('_color')) f = `<input type="color" data-k="${k}" value="${esc(v)}">`;
+    else if (v === 'true' || v === 'false') f = `<input type="checkbox" data-k="${k}" ${v === 'true' ? 'checked' : ''}>`;
+    else if (k === 'font_scale') f = `<input type="number" step="0.05" min="0.7" max="1.6" data-k="${k}" class="${inp}" value="${esc(v)}">`;
+    else f = `<input data-k="${k}" class="${inp}" value="${esc(v)}">`;
+    return `<label class="text-xs font-bold">${k.replace(/_/g, ' ')}<div>${f}</div></label>`;
+  }).join('') + `<button id="ssave" class="md:col-span-2 bg-black text-white rounded py-2 font-bold">Save settings</button></div>
+  <p class="text-xs text-gray-500 mt-2">font_scale 1 = normal, 1.15 = larger text. Colours, logo URL and banner update the live site instantly.</p>`;
+  $('ssave').onclick = async () => {
+    const values = {};
+    document.querySelectorAll('[data-k]').forEach(el => values[el.dataset.k] = el.type === 'checkbox' ? String(el.checked) : el.value);
+    try { await call('setSettings', { values }); say('Settings saved. Refresh the site.'); } catch (e) { say(e.message, 1); }
+  };
+}
+
+function orders() {
+  $('view').innerHTML = `<div class="bg-white rounded-xl p-4 overflow-x-auto"><table class="w-full text-sm"><tr class="text-left text-xs text-gray-500"><th>Date</th><th>Qty</th><th>Amount</th><th>Status</th><th>Email</th></tr>` +
+    D.orders.map(o => `<tr class="border-t"><td>${esc(o.createdAt.slice(0, 16).replace('T', ' '))}</td><td>${o.qty}</td><td>${money(o.amount)}</td><td>${o.status}</td><td>${esc(o.email)}</td></tr>`).join('') + `</table></div>`;
+}
+
+if (K) load();
+</script>
+</body>
+</html>

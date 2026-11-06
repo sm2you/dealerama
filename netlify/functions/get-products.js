@@ -1,51 +1,59 @@
-export default async (req, context) => {
+const json = (obj, status = 200, extra = {}) =>
+  new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...extra }
+  });
+
+const toUrlList = (val) => {
+  let parsed = val;
+  if (typeof val === 'string') {
+    try { parsed = JSON.parse(val); } catch (e) { parsed = [val]; }
+  }
+  if (!Array.isArray(parsed)) parsed = [parsed];
+  return parsed
+    .flat(Infinity)
+    .map(u => String(u).replace(/[\[\]"']/g, '').trim())
+    .filter(u => /^https?:\/\//i.test(u));
+};
+
+export default async () => {
   const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
-  
   if (!APPS_SCRIPT_URL) {
-    return new Response(JSON.stringify({ error: "Missing APPS_SCRIPT_URL environment variable" }), {
-      status: 500, headers: { "Content-Type": "application/json" }
-    });
+    return json({ error: 'Missing APPS_SCRIPT_URL environment variable' }, 500);
   }
 
   try {
     const response = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'get' })
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'get' }),
+      redirect: 'follow'
     });
-    
-    const data = await response.json();
-    
-    // CLEAN THE DATA BEFORE SENDING TO THE WEBSITE
-    if (data && data.products) {
-      data.products = data.products.map(p => {
-        // 1. Fix the ID (remove the apostrophe Google Sheets adds)
-        let cleanId = String(p.id).replace(/'/g, '').trim();
-        
-        // 2. Fix the Images (turn nested arrays into flat text links)
-        let cleanImages = [];
-        if (p.images) {
-           // If it's a string that looks like JSON, parse it
-           let parsed = p.images;
-           if (typeof p.images === 'string') {
-               try { parsed = JSON.parse(p.images); } catch(e) { parsed = []; }
-           }
-           // Flatten the array completely and remove quotes
-           if (Array.isArray(parsed)) {
-               cleanImages = parsed.flat(Infinity).map(img => String(img).replace(/[\[\]"]/g, '').trim());
-           }
-        }
 
-        return { ...p, id: cleanId, images: cleanImages };
-      });
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      return json({
+        error: 'Apps Script did not return JSON. Check the deployment: Execute as "Me", access "Anyone", and that APPS_SCRIPT_URL ends in /exec.',
+        preview: text.slice(0, 200)
+      }, 502);
     }
 
-    return new Response(JSON.stringify(data), {
-      status: 200, headers: { "Content-Type": "application/json" }
-    });
-    
+    if (data.error) return json({ error: data.error }, 502);
+
+    const products = (data.products || [])
+      .map(p => ({
+        ...p,
+        id: String(p.id).replace(/'/g, '').trim(),
+        images: toUrlList(p.images && p.images.length ? p.images : p.imagesJson)
+      }))
+      .filter(p => p.id && p.title)
+      .reverse(); // newest first
+
+    return json({ products }, 200, { 'Cache-Control': 'public, max-age=60' });
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { "Content-Type": "application/json" }
-    });
+    return json({ error: error.message }, 500);
   }
 };

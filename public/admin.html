@@ -882,7 +882,7 @@ function field(key, value) {
   const v = txt(value);
   if (OPTS[key]) return `<select data-k="${escAttr(key)}">${opt(v, OPTS[key])}</select>`;
   if (key.endsWith('_color') || key.endsWith('_bg')) return `<input type="color" data-k="${escAttr(key)}" value="${escAttr(v)}">`;
-  if (v === 'true' || v === 'false') return `<label class="checkline"><input type="checkbox" data-k="${escAttr(key)}" ${v === 'true' ? 'checked' : ''}> On</label>`;
+  if (v === 'true' || v === 'false') return `<input type="checkbox" role="switch" data-k="${escAttr(key)}" ${v === 'true' ? 'checked' : ''}>`;
   if (key === 'font_scale') return `<input type="number" step="0.05" min="0.7" max="1.6" data-k="${escAttr(key)}" value="${escAttr(v)}">`;
   if (key === 'footer_pages') return `<input type="hidden" data-k="${escAttr(key)}" value="${escAttr(v)}">`;
   return `<input data-k="${escAttr(key)}" value="${escAttr(v)}">`;

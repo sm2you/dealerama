@@ -141,10 +141,48 @@ if (/export const config\s*=/.test(apiSrc)) {
   problems.push('api.js declares config.path, which replaces /.netlify/functions/api and breaks /api');
 }
 
-/* 8. Regression: JSON-LD variants must not use sku / the full product name. */
-const popupSrc = readFileSync(join(root, 'extension', 'popup.js'), 'utf8');
-if (/\[v\.name,\s*v\.color,\s*v\.size,\s*v\.sku\]/.test(popupSrc)) {
-  problems.push('popup.js still builds variant keys from name+sku (whole product titles as options)');
+/* 9. CSS coverage: the storefront no longer loads Tailwind from a CDN, so every
+ * utility class used in the pages or in site.js must exist in styles.css
+ * (or be provided by the small styles injected by site.js / product.html). */
+const storefrontCss = readFileSync(join(root, 'public', 'styles.css'), 'utf8');
+const CUSTOM_CLASSES = new Set([
+  'card', 'price', 'pgrid', 'stars', 'badge', 'btn-p',
+  'car', 'car-track', 'car-slide', 'car-b', 'car-l', 'car-r', 'car-dots', 'on', 'active',
+  'thumb', 'rs', 'lbb', 'lbt', 'lb', 'lbx', 'lbp', 'lbn', 'opt'
+]);
+const cssSources = [
+  join(root, 'public', 'index.html'),
+  join(root, 'public', 'product.html'),
+  join(root, 'public', 'account.html'),
+  join(root, 'public', 'site.js')
+];
+const usedClasses = new Set();
+for (const file of cssSources) {
+  const src = readFileSync(file, 'utf8');
+  for (const m of src.matchAll(/class="([^"]*)"/g)) {
+    const raw = m[1];
+    // Static part: drop ${...} expressions, which are not class names.
+    for (const token of raw.replace(/\$\{[^}]*\}/g, ' ').split(/\s+/)) {
+      if (!token || /['${}?]/.test(token)) continue;
+      usedClasses.add(token);
+    }
+    // Classes chosen inside a ternary still need a rule: 'a' : 'b c'.
+    for (const expr of raw.matchAll(/\$\{([^}]*)\}/g)) {
+      for (const literal of expr[1].matchAll(/'([^']*)'/g)) {
+        for (const token of literal[1].split(/\s+/)) {
+          if (token) usedClasses.add(token);
+        }
+      }
+    }
+  }
+}
+const escapeClass = (token) => '.' + token.replace(/[^a-zA-Z0-9_-]/g, (ch) => '\\' + ch);
+const missingCss = [...usedClasses].filter((token) => !CUSTOM_CLASSES.has(token) && !storefrontCss.includes(escapeClass(token)));
+if (missingCss.length) {
+  problems.push('styles.css is missing ' + missingCss.length + ' class(es): ' + missingCss.slice(0, 12).join(', '));
+}
+if (/cdn\.tailwindcss\.com/.test(readFileSync(join(root, 'public', 'index.html'), 'utf8'))) {
+  problems.push('index.html still loads the Tailwind CDN');
 }
 
 /* ------------------------------------------------------------------ */

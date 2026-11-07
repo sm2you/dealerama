@@ -455,7 +455,7 @@ export default async function handler(req) {
   const readOnly = ['getPublic', 'get', 'public'].includes(payload.action);
   const cacheable = readOnly && !payload.secret && !payload.token;
   const headers = cacheable
-    ? { 'Cache-Control': 'public, max-age=15, stale-while-revalidate=120' }
+    ? { 'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=600' }
     : { 'Cache-Control': 'no-store' };
 
   return json({ ...data, via: result.via || 'POST' }, 200, headers);

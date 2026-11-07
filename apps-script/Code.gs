@@ -29,7 +29,7 @@
  * COLUMN ORDER IS UNCHANGED from v4 — existing sheets keep working.
  */
 
-const VERSION = '5.0.0';
+const VERSION = '5.1.0';
 const P = 'Sheet1';
 const PH = ['id', 'title', 'price', 'description', 'imagesJson', 'dealType', 'stripeLink', 'createdAt', 'qty', 'sold', 'status', 'preorder', 'startsAt', 'videoUrl', 'variantsJson'];
 const RH = ['id', 'productId', 'stars', 'text', 'name', 'orderRef', 'status', 'reply', 'createdAt', 'email'];
@@ -47,9 +47,10 @@ const DEFAULTS = {
   card_radius: '12', button_radius: '999', grid_cols: '3', title_live: "Today's Hottest Deals", title_upcoming: 'Upcoming Deals', title_past: 'Past Deals',
   buy_label: 'Buy now', preorder_label: 'Pre-order', view_label: 'View Deal', badge_daily: 'Deal of the day', badge_weekly: 'Deal of the week'
 };
-const PRODUCT_FIELDS = ['title', 'price', 'description', 'dealType', 'qty', 'status', 'preorder', 'startsAt', 'stripeLink', 'videoUrl'];
+const PRODUCT_FIELDS = ['title', 'price', 'description', 'dealType', 'qty', 'sold', 'status', 'preorder', 'startsAt', 'stripeLink', 'videoUrl'];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-const CACHE_KEY = 'public_v2';
+const CACHE_KEY = 'public_v3';
+const CACHE_TTL = 360; // seconds; warmCache() refreshes it every 5 minutes
 /** Status applied to products imported by the extension. Change to 'live' to publish instantly. */
 const IMPORT_STATUS = 'draft';
 
@@ -134,11 +135,23 @@ function newAdminSecret() {
   return s;
 }
 
-/** Applies paid Stripe orders every 5 minutes. */
+/** Applies paid Stripe orders every 5 minutes and keeps the public cache warm. */
 function installTrigger() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('syncPayments').timeBased().everyMinutes(5).create();
-  Logger.log('Trigger installed: syncPayments every 5 minutes.');
+  ScriptApp.newTrigger('warmCache').timeBased().everyMinutes(5).create();
+  Logger.log('Triggers installed: syncPayments + warmCache every 5 minutes.');
+}
+
+/**
+ * Re-populates the public cache so a storefront request rarely pays for a cold
+ * Apps Script start (that is what made the first page load take ~2.8s).
+ */
+function warmCache() {
+  invalidate_();
+  const payload = getPublic_();
+  Logger.log('warmCache: ' + (payload.products || []).length + ' products cached for ' + CACHE_TTL + 's');
+  return true;
 }
 
 /** Logs a health report — useful when something "just doesn't save". */
@@ -352,7 +365,7 @@ function getPublic_() {
 
   try {
     const json = JSON.stringify(payload);
-    if (json.length < 95000) cache.put(CACHE_KEY, json, 20); // CacheService caps values at 100 KB
+    if (json.length < 95000) cache.put(CACHE_KEY, json, CACHE_TTL); // CacheService caps values at 100 KB
   } catch (e) { /* cache is best effort */ }
   return payload;
 }
@@ -714,6 +727,7 @@ function syncPayments(limit) {
 function adminGet_() {
   const ps = PropertiesService.getScriptProperties();
   return {
+    version: VERSION,
     products: table_(P).rows.map((o) => view_(o)).reverse(),
     reviews: table_('Reviews').rows.map((r) => ({
       id: String(r.id),
@@ -787,9 +801,12 @@ function saveAll_(d) {
 
       const offline = Math.floor(num_(f.offline));
       if (offline > 0 && !vparse_(p)) {
-        const base = Object.prototype.hasOwnProperty.call(f, 'qty') ? num_(f.qty) : num_(p.qty);
-        patch.qty = Math.max(0, base - offline);
-        patch.sold = num_(p.sold) + offline;
+        // Stock/sold may be edited directly as well; apply the offline sale on
+        // top of whatever the form submitted, never instead of it.
+        const baseQty = Object.prototype.hasOwnProperty.call(f, 'qty') ? num_(f.qty) : num_(p.qty);
+        const baseSold = Object.prototype.hasOwnProperty.call(f, 'sold') ? num_(f.sold) : num_(p.sold);
+        patch.qty = Math.max(0, baseQty - offline);
+        patch.sold = baseSold + offline;
       }
       updateRow_(t, p._row, patch);
     });
@@ -1106,11 +1123,14 @@ function normVariants_(v, old) {
   const items = combos.map((vals) => {
     const key = vals.join('|');
     const g = given[key] || {};
+    // Sold may be edited by hand; only fall back to the stored value when the
+    // caller did not supply one (e.g. an import that has no sales history).
+    const soldGiven = g.sold !== undefined && g.sold !== null && g.sold !== '';
     return {
       key: key,
       price: num_(g.price) > 0 ? num_(g.price) : '',
       qty: Math.max(0, Math.floor(num_(g.qty))),
-      sold: oldSold[key] || 0,
+      sold: soldGiven ? Math.max(0, Math.floor(num_(g.sold))) : (oldSold[key] || 0),
       image: isUrl_(g.image) ? String(g.image) : ''
     };
   });

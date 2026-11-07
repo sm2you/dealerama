@@ -75,10 +75,73 @@ async function api(body) {
 }
 
 /** Public read used by index.html, product.html and account.html. */
-async function getData() {
+async function getData(options) {
+  const forceFresh = options && options.fresh;
+  if (!forceFresh) {
+    const cached = readCatalog();
+    if (cached) {
+      // Paint immediately from the last good payload, refresh in the background.
+      refreshCatalog();
+      return cached.data;
+    }
+  }
   const d = await apiRequest('GET', null);
   if (d.error) throw new Error(d.error);
+  writeCatalog(d);
   return d;
+}
+
+/* ------------------------------------------------------------------ *
+ * Catalogue cache
+ * ---------------------------------------------------------------------------
+ * A cache miss used to mean waiting ~2.8s for Apps Script. Repeat visitors now
+ * render from localStorage instantly while a fresh copy loads in the background.
+ * ------------------------------------------------------------------ */
+const CATALOG_KEY = 'dm_catalog_v1';
+const CATALOG_TTL = 1000 * 60 * 60 * 6;
+const catalogListeners = [];
+let catalogRefreshing = false;
+
+/** Subscribe to background refreshes (index.html re-renders with them). */
+function onCatalogUpdate(fn) {
+  if (typeof fn === 'function') catalogListeners.push(fn);
+}
+
+function readCatalog() {
+  try {
+    const raw = localStorage.getItem(CATALOG_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.at || !parsed.data) return null;
+    if (Date.now() - parsed.at > CATALOG_TTL) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeCatalog(data) {
+  try {
+    if (!data || data.error) return;
+    localStorage.setItem(CATALOG_KEY, JSON.stringify({ at: Date.now(), data: data }));
+  } catch (e) {
+    /* private mode or quota — caching is best effort */
+  }
+}
+
+function refreshCatalog() {
+  if (catalogRefreshing) return;
+  catalogRefreshing = true;
+  apiRequest('GET', null)
+    .then(function (fresh) {
+      if (!fresh || fresh.error) return;
+      writeCatalog(fresh);
+      catalogListeners.forEach(function (fn) {
+        try { fn(fresh); } catch (e) { console.error(e); }
+      });
+    })
+    .catch(function () { /* offline: keep the cached copy */ })
+    .finally(function () { catalogRefreshing = false; });
 }
 
 const PLACEHOLDER = 'https://placehold.co/600x600?text=No+Image';
@@ -152,10 +215,24 @@ function openPage(title, body) {
 }
 
 function applyTheme(s) {
+  // Re-applying a theme must not stack <style>/<link>/<footer> nodes; the
+  // catalogue refresh re-renders pages and calls this again.
+  const previousStyle = document.getElementById('dm-theme');
+  if (previousStyle) previousStyle.remove();
+  const previousFooter = document.querySelector('footer.dm-footer');
+  if (previousFooter) previousFooter.remove();
+
   const fams = [...new Set([s.font_body, s.font_heading])].filter(f => f && f !== 'system-ui');
-  if (fams.length) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?' + fams.map(f => 'family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@400;700').join('&') + '&display=swap'; document.head.appendChild(l); }
+  if (fams.length && !document.getElementById('dm-fonts')) {
+    const l = document.createElement('link');
+    l.id = 'dm-fonts';
+    l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?' + fams.map(f => 'family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@400;700').join('&') + '&display=swap';
+    document.head.appendChild(l);
+  }
   const fam = (f) => `'${f}',system-ui,sans-serif`, cols = Math.min(4, Math.max(1, Number(s.grid_cols) || 3));
   const css = document.createElement('style');
+  css.id = 'dm-theme';
   css.textContent = `:root{--p:${s.primary_color};--a:${s.accent_color};--price:${s.price_color}}
   html{font-size:${16 * (Number(s.font_scale) || 1)}px}
   body{background:${s.bg_color};color:${s.text_color};font-family:${fam(s.font_body)}}
@@ -180,7 +257,7 @@ function applyTheme(s) {
   if (b && on(s.banner_on) && s.banner_text) { b.textContent = s.banner_text; b.style.background = s.banner_color; b.style.display = 'block'; }
   if (on(s.footer_on)) {
     const pages = pagesFrom(s), f = document.createElement('footer');
-    f.className = 'border-t mt-16 py-8 px-6 text-sm text-gray-500'; f.style.background = s.footer_bg;
+    f.className = 'dm-footer border-t mt-16 py-8 px-6 text-sm text-gray-500'; f.style.background = s.footer_bg;
     f.innerHTML = `<div class="max-w-6xl mx-auto flex flex-wrap gap-x-6 gap-y-2 justify-between"><span>${esc(s.footer_text || ('© ' + new Date().getFullYear() + ' ' + s.business_name))}</span><span class="flex flex-wrap gap-x-5 gap-y-1">${pages.map((p, i) => `<button type="button" class="hover:text-black underline-offset-2 hover:underline" data-pg="${i}">${esc(p.title)}</button>`).join('')}</span></div>`;
     f.querySelectorAll('[data-pg]').forEach(btn => btn.onclick = () => { const p = pages[btn.dataset.pg]; openPage(fill(p.title, s), fill(p.body, s)); });
     document.body.appendChild(f);

@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Product</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <style>
 .thumb{cursor:pointer;border:2px solid transparent;background:#fff;padding:4px}.thumb.active{border-color:var(--p)}
 #lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.92)}#lb.open{display:block}
@@ -117,7 +119,10 @@ async function load() {
   const L = $('loading'), id = new URLSearchParams(location.search).get('id');
   if (!id) { L.textContent = 'No product ID.'; return; }
   try {
-    const d = await getData();
+    let d = await getData();
+    // A cached catalogue may predate this product (newly published), so fall
+    // back to a fresh read before claiming it does not exist.
+    if (!d.products.some(p => p.id === id)) d = await getData({ fresh: true });
     S = d.settings; applyTheme(S);
     initAuth(S, () => { if (on(S.reviews_on)) { $('reviews').innerHTML = reviewsHtml(d.reviews.filter(r => r.productId === P.id)); bindReview(); } });
     P = d.products.find(p => p.id === id); V = P && P.variants;

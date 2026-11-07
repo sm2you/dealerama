@@ -524,6 +524,75 @@ await test('offline sales move stock and keep sold history', () => {
   assert.equal(p.sold, 3);
 });
 
+await test('stock and sold can be set directly (offline sales, corrections)', () => {
+  const secret = props.get('SECRET_KEY');
+  callPost('saveAll', { secret, products: [{ id: importedId, fields: { qty: '12', sold: '40' } }] });
+
+  const p = api.adminGet_().products.find((x) => x.id === importedId);
+  assert.equal(p.qty, 12, 'stock is written as given');
+  assert.equal(p.sold, 40, 'sold is written as given, not just incremented');
+});
+
+await test('an offline sale applies on top of an edited sold, it does not overwrite it', () => {
+  const secret = props.get('SECRET_KEY');
+  callPost('saveAll', { secret, products: [{ id: importedId, fields: { qty: '20', sold: '5', offline: '2' } }] });
+
+  const p = api.adminGet_().products.find((x) => x.id === importedId);
+  assert.equal(p.qty, 18);
+  assert.equal(p.sold, 7, 'edited sold (5) + offline sale (2)');
+});
+
+await test('variant stock and sold are editable', () => {
+  const secret = props.get('SECRET_KEY');
+  callPost('saveAll', {
+    secret,
+    products: [{
+      id: importedId,
+      fields: {
+        variants: {
+          options: [{ name: 'Size', values: ['S', 'M'] }],
+          items: [
+            { key: 'S', price: 20, qty: 4, sold: 11 },
+            { key: 'M', price: 20, qty: 0, sold: 3 }
+          ]
+        }
+      }
+    }]
+  });
+
+  const p = api.adminGet_().products.find((x) => x.id === importedId);
+  assert.equal(p.variants.items.find((i) => i.key === 'S').sold, 11, 'edited sold is kept');
+  assert.equal(p.variants.items.find((i) => i.key === 'M').qty, 0);
+  assert.equal(p.qty, 4, 'product stock sums the variants');
+  assert.equal(p.sold, 14, 'product sold sums the variants');
+});
+
+await test('a variant sold value is preserved when the option grid is rebuilt without it', () => {
+  const secret = props.get('SECRET_KEY');
+  // The admin rebuilds the grid from options only; sold must survive by key.
+  callPost('saveAll', {
+    secret,
+    products: [{
+      id: importedId,
+      fields: {
+        variants: {
+          options: [{ name: 'Size', values: ['S', 'M'] }],
+          items: [{ key: 'S', price: 20, qty: 4 }, { key: 'M', price: 20, qty: 2 }]
+        }
+      }
+    }]
+  });
+  const p = api.adminGet_().products.find((x) => x.id === importedId);
+  assert.equal(p.variants.items.find((i) => i.key === 'S').sold, 11, 'existing sold history is not wiped');
+});
+
+await test('adminGet reports the backend version so the UI can gate sold editing', () => {
+  const secret = props.get('SECRET_KEY');
+  const data = callPost('adminGet', { secret });
+  assert.match(data.version, /^\d+\.\d+\.\d+$/);
+  assert.ok(data.version >= '5.1.0');
+});
+
 await test('saveAll APPLIES product deletions and the new review in the same call', () => {
   const secret = props.get('SECRET_KEY');
   const doomed = api.createProduct_();
@@ -579,7 +648,8 @@ await test('checkout creates a pending order and returns the Stripe URL', () => 
   const secret = props.get('SECRET_KEY');
   callPost('saveAll', {
     secret,
-    products: [{ id: importedId, fields: { status: 'live', variants: { options: [], items: [] }, qty: '5', price: '10' } }]
+    // Set stock and sold explicitly so this test does not depend on history.
+    products: [{ id: importedId, fields: { status: 'live', variants: { options: [], items: [] }, qty: '5', sold: '3', price: '10' } }]
   });
 
   const r = callPost('checkout', { productId: importedId, qty: 2 });

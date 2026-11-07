@@ -41,9 +41,9 @@ Chrome extension → Google Apps Script (Google Sheet + ImgBB) → Netlify store
 | `netlify/functions/api.js` | Single `/api` endpoint: GET + POST, CORS, JSON everywhere, Apps Script POST→GET fallback, data normalisation. |
 | `netlify.toml` | Publish dir, `/api` rewrite, security headers. |
 | `extension/` | MV3 extension: `popup.js` scrapers, `staging.html/js` review + publish. |
-| `public/` | Storefront (`index`, `product`, `account`), `admin.html`, shared `site.js`. |
+| `public/` | Storefront (`index`, `product`, `account`), `admin.html`, shared `site.js`, `styles.css` (replaces the Tailwind CDN). |
 | `scripts/` | `push.mjs` (creates the GitHub repo and pushes), `configure.mjs` (writes + verifies live settings), `probe.mjs` (which build is live, is `/api` up), `repair-data.mjs` (entity/placeholder cleanup, dry-run first). |
-| `test/` | 73 assertions with an in-memory Apps Script emulator, a DOM stub and a fake GitHub API. |
+| `test/` | 89 assertions with an in-memory Apps Script emulator, a DOM stub, a fake admin DOM and a fake GitHub API. |
 
 ## Publishing this repo to GitHub
 
@@ -132,10 +132,31 @@ npm run configure
 
 > Prefer instant publishing? Change `IMPORT_STATUS = 'draft'` to `'live'` at the top of `Code.gs`.
 
+## Performance
+
+| | Before | Now |
+| --- | --- | --- |
+| Page weight (HTML + CSS + JS) | ~425 KB | **~30 KB** |
+| Render-blocking external script | Tailwind Play CDN, 407 KB | none (7.5 KB `styles.css`) |
+| Repeat visit first paint | waits for `/api` | **instant** (localStorage catalogue) |
+| `/api` cache miss | ~2.8 s | 0.8–1.1 s warm; CDN hit ~25 ms |
+
+* `public/styles.css` replaces the Tailwind CDN with only the utilities the storefront uses.
+  `npm run check` fails if a class is used that has no rule.
+* The catalogue is cached in `localStorage` (`dm_catalog_v1`): repeat visitors paint immediately
+  and a fresh copy loads in the background (`onCatalogUpdate` re-renders the index).
+* `applyTheme()` is idempotent, so re-rendering never stacks `<style>`/`<link>`/`<footer>` nodes.
+* The product page re-reads once (`getData({ fresh: true })`) when a cached catalogue predates a
+  newly published product.
+* `/api` is cached 60 s at the edge with `stale-while-revalidate=600`.
+* **First-visit cold start** is dominated by Apps Script. Paste the current `Code.gs` (5.1.0) and run
+  `installTrigger()`: the public cache lives 360 s and `warmCache()` refreshes it every 5 minutes, so
+  the function rarely pays for a cold start. This is the same re-paste that enables manual *Sold* edits.
+
 ## Local checks
 
 ```bash
-npm test        # 73 assertions: api.js, Code.gs (emulated Sheets), variant scrapers, scripts
+npm test        # 89 assertions: api.js, Code.gs (emulated Sheets), variant scrapers, admin DOM, scripts
 npm run check   # parses every script + inline <script>, validates JSON and wiring
 ```
 
@@ -158,6 +179,8 @@ credentials, and it asserts the token is never written into the git remote).
 | Titles show `&#39;` | Entities stored from an old import: `node scripts/repair-data.mjs --fix-entities` (dry-run first). |
 | Variant options are whole product titles or SKUs | Scraped by an older extension build (JSON-LD `name`/`sku`). Reload the extension (v5.1+) and rescrape; option values are now short colour/size words only. |
 | Admin Save throws `reading 'trim'` | Fixed in v5.1: variant rows used `data-key`, the attribute Save also scanned for private keys. Hard-refresh `/admin.html`. |
+| *Sold* is read-only in the admin | The deployed `Code.gs` is older than 5.1.0. Paste the current file into Apps Script, redeploy, and run `installTrigger()` (also warms the public cache). |
+| Storefront still slow on a first visit | That is the Apps Script cold start. Re-paste `Code.gs` and run `installTrigger()`; repeat visits already paint from cache. |
 | Checkout says "not available" | Product status must be `live` (or `upcoming` + pre-order), price > 0, stock > 0. |
 | Extension blocked on a custom domain | Add `https://your-domain/*` to `host_permissions` in `manifest.json` and reload. |
 | Orders stuck on pending | `installTrigger()` not installed, or `STRIPE_SECRET_KEY` missing. Paid visits to `account.html` self-confirm via `confirmOrder`. |
